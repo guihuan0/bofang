@@ -1,0 +1,51 @@
+name: build-ipa
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'PipiMusic/**'
+      - 'build.sh'
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 30
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: toolchain info
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          uname -m
+
+      - name: install ldid
+        run: |
+          brew install ldid || true
+          which ldid || echo "ldid 没装上，build.sh 会退到 codesign ad-hoc"
+
+      - name: build ipa
+        run: |
+          chmod +x build.sh
+          ./build.sh
+
+      - name: verify
+        run: |
+          echo "--- ipa 内容 ---"
+          unzip -l PipiMusic.ipa
+          echo "--- 可执行文件架构 ---"
+          lipo -info build/Payload/PipiMusic.app/PipiMusic || true
+          echo "--- 签名 ---"
+          codesign -dv build/Payload/PipiMusic.app/PipiMusic 2>&1 || true
+
+      - name: upload ipa
+        uses: actions/upload-artifact@v4
+        with:
+          name: PipiMusic-ipa
+          path: PipiMusic.ipa
+          retention-days: 30
