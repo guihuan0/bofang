@@ -63,4 +63,4 @@ echo
 echo "结构："
 find "$OUT/Payload" -maxdepth 2 -type f | head -20
 
-# build trigger: iOS 1.0.0
+# build trigger: 2026-11-07 04:26:45
