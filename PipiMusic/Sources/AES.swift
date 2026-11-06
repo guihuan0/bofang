@@ -81,7 +81,7 @@ enum LRCParser {
             let matches = timeRe.matches(in: line, options: [], range: NSRange(location: 0, length: ns.length))
             if matches.isEmpty { continue }
 
-            var text = timeRe.stringByReplacingMatches(
+            let text = timeRe.stringByReplacingMatches(
                 in: line, options: [],
                 range: NSRange(location: 0, length: ns.length),
                 withTemplate: ""

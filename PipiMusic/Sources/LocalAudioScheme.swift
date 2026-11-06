@@ -31,7 +31,7 @@ final class LocalAudioScheme: NSObject, WKURLSchemeHandler {
         }
 
         // pipilocal://local/<文件名>
-        let raw = url.path.isEmpty ? url.host : url.path
+        let raw: String = url.path.isEmpty ? (url.host ?? "") : url.path
         let name = (raw as NSString).lastPathComponent
         if name.isEmpty {
             task.didFailWithError(PipiError.message("empty name"))
