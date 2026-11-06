@@ -62,3 +62,5 @@ ls -lh "$ROOT/$APP_NAME.ipa"
 echo
 echo "结构："
 find "$OUT/Payload" -maxdepth 2 -type f | head -20
+
+# build trigger: iOS 1.0.0
