@@ -36,7 +36,7 @@ bofang/
 
 ## 构建
 
-推上去就自动跑，不用本地环境：
+推上去自动跑，不用本地环境：
 
 ```bash
 git add .
@@ -53,6 +53,22 @@ git push
 ```
 
 用的是 `xcrun swiftc` 手工编译 + 组装 `Payload/`，**不依赖 .xcodeproj**，改代码不用同步工程文件。
+
+### 构建环境的三条硬约束
+
+踩过的坑，别改回去：
+
+1. **必须 `runs-on: macos-latest`**
+   `macos-14` 这个 label 在这个账号上会被判 `cancelled`——job 创建两秒后直接死，runner 都不分配。
+   换成 `macos-latest` 立刻就正常了。
+
+2. **GitHub Free 账号 + 私有仓库 = 没有 macOS runner**
+   免费额度只覆盖 Linux/Windows。表现同样是 `cancelled`，日志 zip 只有 22 字节。
+   要么仓库改公开（推荐，公开仓库的 Actions 全免费），要么升 Pro。
+
+3. **不要 `-framework CommonCrypto`**
+   `CommonCrypto` 不是独立 framework，它在 libSystem 里。
+   `import CommonCrypto` 能过编译，但链接时会报 `ld: framework 'CommonCrypto' not found`。
 
 ---
 
