@@ -24,8 +24,7 @@ xcrun -sdk iphoneos swiftc \
   "$SRC"/*.swift \
   -framework UIKit \
   -framework WebKit \
-  -framework AVFoundation \
-  -framework CommonCrypto
+  -framework AVFoundation
 
 echo "==> bundle resources"
 cp "$ROOT/$APP_NAME/Info.plist" "$OUT/Payload/$APP_NAME.app/Info.plist"
@@ -62,5 +61,3 @@ ls -lh "$ROOT/$APP_NAME.ipa"
 echo
 echo "结构："
 find "$OUT/Payload" -maxdepth 2 -type f | head -20
-
-# build trigger: 2026-11-07 04:26:45
