@@ -1,0 +1,233 @@
+﻿/* ============================================================
+   iOS / 窄屏适配
+   iPhone 上三栏摆不开：左栏降成底部 tab，歌词变成上滑抽屉。
+   ============================================================ */
+
+@media (max-width: 860px) {
+
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  .app {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto 76px;
+    grid-template-areas:
+      "main"
+      "side"
+      "bar";
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  /* --- 左栏 → 底部 tab --- */
+  .sidebar {
+    flex-direction: row;
+    align-items: center;
+    border-right: 0;
+    border-top: 1px solid var(--line);
+    padding: 4px 4px calc(4px + env(safe-area-inset-bottom));
+    background: rgba(10, 12, 17, .96);
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .brand { display: none; }
+
+  .nav {
+    flex-direction: row;
+    gap: 2px;
+    width: 100%;
+    justify-content: space-around;
+  }
+
+  .nav-item {
+    flex-direction: column;
+    gap: 3px;
+    padding: 6px 6px;
+    border-radius: 9px;
+    min-width: 54px;
+    font-size: 10px;
+    line-height: 1.2;
+    position: relative;
+  }
+
+  .nav-item svg { width: 19px; height: 19px; }
+  .nav-item span { font-size: 10px; }
+
+  .nav-item .badge {
+    position: absolute;
+    top: 2px;
+    right: 4px;
+    min-width: 15px;
+    height: 15px;
+    line-height: 15px;
+    font-size: 9px;
+    padding: 0 4px;
+  }
+
+  .side-foot { display: none; }
+
+  /* --- 歌词 → 上滑抽屉 --- */
+  .lyrics {
+    position: fixed;
+    inset: 0;
+    z-index: 120;
+    border-left: 0;
+    background: linear-gradient(180deg, rgba(15, 18, 26, .99), rgba(8, 10, 14, .99));
+    transform: translateY(102%);
+    transition: transform .3s cubic-bezier(.22, .61, .36, 1);
+    padding-top: calc(10px + env(safe-area-inset-top));
+    padding-bottom: env(safe-area-inset-bottom);
+    will-change: transform;
+  }
+
+  body.lyric-open .lyrics { transform: translateY(0); }
+
+  #lyricClose {
+    display: flex !important;
+    width: 40px;
+    height: 40px;
+  }
+
+  /* 抽屉打开时压暗主体 */
+  body.lyric-open .main::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, .5);
+    z-index: 110;
+  }
+
+  /* --- 顶栏 --- */
+  .topbar {
+    padding: calc(10px + env(safe-area-inset-top)) 14px 8px;
+    gap: 8px;
+  }
+
+  .toprow { gap: 8px; }
+
+  .searchbox input { font-size: 15px; }        /* iOS 小于 16px 会触发缩放 */
+  .searchbox .go { padding: 0 14px; }
+
+  .sources {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .sources::-webkit-scrollbar { display: none; }
+  .source-chip { flex: none; }
+
+  /* --- 列表 --- */
+  .main { padding: 0 10px; }
+
+  .list-head {
+    padding: 10px 4px 8px;
+    gap: 8px;
+  }
+  .list-head h2 { font-size: 15px; }
+
+  .song {
+    grid-template-columns: 26px 38px minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 7px 8px;
+  }
+
+  .song .cover { width: 38px; height: 38px; }
+  .song .t { font-size: 13.5px; }
+  .song .artist { font-size: 11px; }
+
+  /* 行内按钮在 iOS 没有 hover，常驻但收窄 */
+  .song .act { opacity: 1; gap: 0; }
+  .song .act .icon-btn { width: 30px; height: 30px; }
+  .song .act .icon-btn svg { width: 15px; height: 15px; }
+
+  /* --- 播放条 --- */
+  .playbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 0 12px env(safe-area-inset-bottom);
+    height: 76px;
+  }
+
+  .playbar .mid { display: none; }
+
+  .playbar .left { gap: 8px; min-width: 0; }
+  .playbar .left .cover { width: 42px; height: 42px; }
+  .playbar .left .t { font-size: 13px; }
+  .playbar .left .a { font-size: 11px; }
+
+  .playbar .right { gap: 6px; }
+  .playbar .right .vbar { display: none; }
+
+  /* 用一条细进度条顶在播放条上沿 */
+  .mini-progress {
+    display: block !important;
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 2px;
+    background: var(--acc);
+    box-shadow: 0 0 6px var(--acc);
+    transition: width .2s linear;
+  }
+
+  .playbar { position: relative; }
+
+  /* --- 已下载行 --- */
+  .dl-row {
+    grid-template-columns: 22px minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 8px;
+  }
+  .dl-row .tag { display: none; }
+  .dl-row .meta { font-size: 10px; }
+
+  /* --- 歌单卡片 --- */
+  .import-box { padding: 10px; }
+  .import-box textarea { min-height: 84px; font-size: 14px; }
+  .import-bar { flex-direction: column; align-items: stretch; gap: 8px; }
+  .import-tips { flex-wrap: wrap; }
+  .primary-btn { width: 100%; height: 38px; }
+
+  .pl-head { padding: 11px 12px; gap: 8px; }
+  .pl-name { font-size: 13px; }
+
+  .pl-track { padding: 8px; gap: 8px; }
+  .pl-track .a { max-width: 34%; }
+
+  /* --- toast 别被 tab 挡住 --- */
+  #toast, .toast {
+    bottom: calc(84px + env(safe-area-inset-bottom)) !important;
+  }
+}
+
+/* 横屏 iPhone：高度很小，压一压 */
+@media (max-width: 860px) and (orientation: landscape) {
+  .app {
+    grid-template-rows: minmax(0, 1fr) auto 60px;
+  }
+  .playbar { height: 60px; }
+  .topbar { padding-top: 6px; }
+}
+
+/* 关掉 iOS 的长按放大镜和选择 */
+body.ios, body.ios * {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+body.ios input, body.ios textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* 滚动回弹和惯性 */
+.main, .lyrics-list, .pl-body {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
