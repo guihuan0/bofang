@@ -75,12 +75,20 @@ final class PipiClient {
 
     init(source: SoundSource) {
         self.source = source
-        let cfg = URLSessionConfiguration.ephemeral
-        cfg.httpCookieStorage = HTTPCookieStorage()
+        // 用 default 而不是 ephemeral：要的是 HTTPCookieStorage.shared 那套
+        // 按 domain 隔离的存储。三个站域名不同，天然互不干扰，
+        // 行为跟 Python 的 requests.Session 一致。
+        //
+        // 别写 cfg.httpCookieStorage = HTTPCookieStorage() ——
+        // 那个初始化器造的是空壳，cookie 存不进去，验证拿到的 PHPSESSID
+        // 会丢，之后每个请求都被判「人机验证未通过」。
+        let cfg = URLSessionConfiguration.default
         cfg.httpShouldSetCookies = true
+        cfg.httpCookieAcceptPolicy = .always
+        cfg.urlCache = nil
+        cfg.requestCachePolicy = .reloadIgnoringLocalCacheData
         cfg.timeoutIntervalForRequest = 25
         cfg.timeoutIntervalForResource = 60
-        cfg.requestCachePolicy = .reloadIgnoringLocalCacheData
         self.session = URLSession(configuration: cfg)
     }
 
@@ -156,6 +164,13 @@ final class PipiClient {
     private static let csrfRe = try! NSRegularExpression(
         pattern: "name=\"csrf_token\"\\s+value=\"([^\"]+)\"", options: [])
 
+    /// 和 Python 版一致：只认这两种标记，别用裸的 "human_check"。
+    /// 首页里有可能出现这个词（脚本、注释），按裸串判会误伤。
+    private static func needsVerify(_ body: String) -> Bool {
+        if body.isEmpty { return true }
+        return body.contains("安全人机验证") || body.contains("name=\"human_check\"")
+    }
+
     func ensureVerified(force: Bool = false) throws {
         sem.wait()
         defer { sem.signal() }
@@ -165,7 +180,7 @@ final class PipiClient {
         }
 
         let (html, _) = try get(source.base + "/")
-        if !html.contains("human_check") {
+        if !Self.needsVerify(html) {
             verifiedAt = Date().timeIntervalSince1970
             return
         }
@@ -177,13 +192,28 @@ final class PipiClient {
         }
         let token = ns.substring(with: m.range(at: 1))
 
-        let body = try post(source.base + "/",
-                            form: ["csrf_token": token, "human_check": "on"],
-                            referer: source.base + "/")
-        if body.contains("human_check") {
-            throw PipiError.message("人机验证未通过")
+        var lastBody = ""
+        for attempt in 1...2 {
+            lastBody = try post(source.base + "/",
+                                form: ["csrf_token": token, "human_check": "on"],
+                                referer: source.base + "/")
+            if !Self.needsVerify(lastBody) {
+                verifiedAt = Date().timeIntervalSince1970
+                return
+            }
+            // 第一次没过，稍等一下再试一遍；有些时候是会话刚建好还没生效
+            if attempt == 1 {
+                Thread.sleep(forTimeInterval: 0.8)
+            }
         }
-        verifiedAt = Date().timeIntervalSince1970
+
+        let names = session.configuration.httpCookieStorage?
+            .cookies?.map { $0.name }.joined(separator: ",") ?? "无"
+        let brief = lastBody.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        throw PipiError.message(
+            "人机验证未通过（返回 \(lastBody.count) 字节，cookie: \(names)）"
+            + (brief.isEmpty ? "，页面为空" : "：\(String(brief.prefix(80)))"))
     }
 
     // MARK: - HTML 解析
