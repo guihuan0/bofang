@@ -17,7 +17,7 @@ struct SoundSource {
         SoundSource(id: "aac", label: "AAC音乐", base: "https://www.aac.cx",
                     searchPath: "/so/{kw}.html", playPath: "/js/play.php",
                     playType: "music", plain: false),
-        SoundSource(id: "33ve", label: "闪闪音乐", base: "http://www.33ve.com",
+        SoundSource(id: "33ve", label: "闪闪音乐", base: "https://www.33ve.com",
                     searchPath: "/so/{kw}.html", playPath: "/style/js/play.php",
                     playType: "dance", plain: true),
     ]
@@ -322,7 +322,20 @@ final class PipiClient {
                 segment = String(segment[segment.startIndex..<end.lowerBound])
             }
         }
-        return parseList(segment, limit: limit)
+
+        let items = parseList(segment, limit: limit)
+        if items.isEmpty && !html.isEmpty {
+            // 没解析出东西，说明页面结构和预期不一样，把线索带出去
+            let hasMp3 = html.contains("/mp3/")
+            let hasUrl = html.contains("class=\"url\"")
+            let hasSname = html.contains("class=\"sname\"")
+            let hasName = html.contains("class=\"name\"")
+            throw PipiError.message(
+                "没解析到结果（页面 \(html.count) 字节，"
+                + "含/mp3/\(hasMp3)，class=url \(hasUrl)，"
+                + "sname \(hasSname)，name \(hasName)）")
+        }
+        return items
     }
 
     // MARK: - 播放地址
