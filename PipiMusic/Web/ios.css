@@ -356,20 +356,34 @@ body.ios.player-expanded .player-heading {
   font-weight: 700;
 }
 
-#playerLyricsToggle {
-  margin-left: auto;
-  min-width: 56px;
+#playerLyricsPreview { display: none; }
+
+body.ios.player-expanded #playerLyricsPreview {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 4px;
   min-height: 44px;
+  padding: 8px 0;
   border: 0;
-  border-radius: 22px;
-  background: var(--hover);
+  background: transparent;
   color: var(--text);
+  font: inherit;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: left;
 }
 
-#playerLyricsToggle[aria-pressed="true"] {
-  background: var(--acc);
-  color: #0b0d12;
+#playerLyricsPreview span:not([hidden]) {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
+
+#playerLyricNext,
+#playerLyricsPreview:disabled { color: var(--dim); }
+
+body.ios.player-expanded #playerLyrics:not([hidden]) ~ #playerLyricsPreview { display: none; }
 
 body.ios .playbar button:active,
 body.ios .nav-item:active,
@@ -390,7 +404,7 @@ body.ios.player-expanded .disc {
   grid-column: 1 / -1;
   grid-row: 1;
   justify-self: center;
-  width: min(100%, 320px, 43vh);
+  width: min(100%, 320px, 36vh);
   height: auto;
   border-radius: 20px;
   animation: none;
@@ -405,6 +419,9 @@ body.ios.player-expanded #playerLyrics:not([hidden]) {
 }
 
 #playerLyrics:not([hidden]) + .disc { visibility: hidden; }
+body.ios.player-expanded #playerLyrics:not([hidden]) + .disc {
+  width: min(100%, 400px, 48vh);
+}
 body.ios:not(.player-expanded) #playerLyrics { display: none; }
 body.ios:not(.player-expanded) #playerLyrics + .disc { visibility: visible; }
 
@@ -419,6 +436,19 @@ body.ios:not(.player-expanded) #playerLyrics + .disc { visibility: visible; }
   font-size: clamp(17px, 4.7vw, 25px);
   line-height: 1.45;
   transform: none;
+}
+
+#playerLyrics .lyric-list li { padding: 3px 0; }
+#playerLyrics .lyric-line { min-height: 44px; }
+
+.lyric-line {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 @media (prefers-reduced-motion: reduce) {

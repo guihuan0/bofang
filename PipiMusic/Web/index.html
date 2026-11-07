@@ -194,10 +194,9 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
       </button>
       <span>正在播放</span>
-      <button type="button" id="playerLyricsToggle" aria-controls="playerLyrics" aria-pressed="false">歌词</button>
     </div>
     <div class="now">
-      <section id="playerLyrics" aria-label="同步歌词" hidden></section>
+      <section id="playerLyrics" aria-label="同步歌词" tabindex="-1" hidden></section>
       <div class="disc" id="disc">
         <img id="nowCover" alt="">
         <div class="disc-hole"></div>
@@ -211,6 +210,10 @@
       </button>
       <button class="fav-btn" id="favBtn" title="收藏 / 取消收藏">
         <svg viewBox="0 0 24 24"><path d="M12 20s-7-4.35-7-9.5A4.5 4.5 0 0 1 12 7a4.5 4.5 0 0 1 7 3.5C19 15.65 12 20 12 20z"/></svg>
+      </button>
+      <button type="button" id="playerLyricsPreview" aria-label="展开全部歌词" aria-controls="playerLyrics" aria-expanded="false" disabled>
+        <span id="playerLyricCurrent">播放歌曲后显示歌词</span>
+        <span id="playerLyricNext" hidden></span>
       </button>
     </div>
 
