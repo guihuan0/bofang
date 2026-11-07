@@ -5,6 +5,7 @@
   var ios = window.webkit && window.webkit.messageHandlers &&
             window.webkit.messageHandlers.pipi;
   if (!ios) return;
+  document.body.classList.add('ios');
 
   window.__PIPI_IOS__ = true;
 

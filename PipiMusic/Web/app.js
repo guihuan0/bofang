@@ -1327,6 +1327,23 @@
     return Math.max(0, Math.min(1, x));
   }
 
+  const openPlayer = $('#openPlayer');
+  const closePlayer = $('#closePlayer');
+
+  function setPlayerExpanded(expanded) {
+    document.body.classList.toggle('player-expanded', expanded);
+    openPlayer.setAttribute('aria-expanded', String(expanded));
+    (expanded ? closePlayer : openPlayer).focus();
+  }
+
+  openPlayer.addEventListener('click', () => setPlayerExpanded(true));
+  closePlayer.addEventListener('click', () => setPlayerExpanded(false));
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.body.classList.contains('player-expanded')) {
+      setPlayerExpanded(false);
+    }
+  });
+
   let seeking = false;
 
   function applySeek(e) {
@@ -1337,25 +1354,27 @@
     elTCur.textContent = fmtTime(r * audio.duration);
   }
 
-  elSeekBar.addEventListener('mousedown', (e) => {
-    if (!audio.duration) return;
+  elSeekBar.addEventListener('pointerdown', (e) => {
+    if (!audio.duration || !e.isPrimary || e.button !== 0) return;
     seeking = true;
+    elSeekBar.setPointerCapture(e.pointerId);
     applySeek(e);
     e.preventDefault();
   });
 
-  window.addEventListener('mousemove', (e) => {
-    if (seeking) applySeek(e);
+  elSeekBar.addEventListener('pointermove', (e) => {
+    if (seeking && elSeekBar.hasPointerCapture(e.pointerId)) applySeek(e);
   });
 
-  window.addEventListener('mouseup', (e) => {
-    if (!seeking) return;
+  elSeekBar.addEventListener('pointerup', (e) => {
+    if (!seeking || !elSeekBar.hasPointerCapture(e.pointerId)) return;
     seeking = false;
     if (audio.duration) {
       const r = ratioFromEvt(elSeekBar, e);
       audio.currentTime = r * audio.duration;
     }
   });
+  elSeekBar.addEventListener('lostpointercapture', () => { seeking = false; });
 
   // ---------------------------------------------------------- 音量
   let lastVol = 0.7;
