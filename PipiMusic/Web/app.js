@@ -591,9 +591,43 @@
   }
 
   // ---------------------------------------------------------- 搜索
+  const searchHistory = $('#searchHistory');
+  const searchHistoryList = $('#searchHistoryList');
+  const searchHistoryKey = 'pipi.searchHistory';
+  let recentSearches = [];
+
+  if (window.__PIPI_IOS__) {
+    try {
+      const saved = JSON.parse(localStorage.getItem(searchHistoryKey));
+      if (Array.isArray(saved)) recentSearches = saved.filter((kw) => typeof kw === 'string' && kw.trim()).slice(0, 12);
+    } catch (_) {}
+    renderSearchHistory();
+  }
+
+  function renderSearchHistory() {
+    searchHistory.hidden = recentSearches.length === 0;
+    searchHistoryList.textContent = '';
+    recentSearches.forEach((kw) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = kw;
+      button.addEventListener('click', () => {
+        elSearch.value = kw;
+        doSearch(kw);
+      });
+      searchHistoryList.appendChild(button);
+    });
+  }
+
   function doSearch(kw) {
     kw = (kw || '').trim();
     if (!kw) { elSearch.focus(); return; }
+
+    if (window.__PIPI_IOS__ && recentSearches[0] !== kw) {
+      recentSearches = [kw, ...recentSearches.filter((item) => item !== kw)].slice(0, 12);
+      try { localStorage.setItem(searchHistoryKey, JSON.stringify(recentSearches)); } catch (_) {}
+      renderSearchHistory();
+    }
 
     switchView('search');
     elHero.hidden = true;
@@ -1216,26 +1250,17 @@
       else if (Math.abs(i - idx) === 1) nodes[i].classList.add('near');
     }
     const cur = nodes[idx];
-    if (cur) {
+    if (cur && elLyricBody.clientHeight) {
       const target = cur.offsetTop - elLyricBody.clientHeight * 0.38;
       elLyricBody.scrollTop = Math.max(0, target);
     }
   }
 
   $('#lyricToggle').addEventListener('click', () => {
-    // iOS 上歌词是上滑抽屉，不走「隐藏一栏」那套
-    if (window.__PIPI_IOS__) {
-      document.body.classList.toggle('lyric-open');
-      return;
-    }
     document.body.classList.toggle('no-lyrics');
     $('#lyricToggle').classList.toggle('on', !document.body.classList.contains('no-lyrics'));
   });
   $('#lyricClose').addEventListener('click', () => {
-    if (window.__PIPI_IOS__) {
-      document.body.classList.remove('lyric-open');
-      return;
-    }
     document.body.classList.add('no-lyrics');
     $('#lyricToggle').classList.remove('on');
   });
@@ -1329,10 +1354,30 @@
 
   const openPlayer = $('#openPlayer');
   const closePlayer = $('#closePlayer');
+  const playerLyrics = $('#playerLyrics');
+  const playerLyricsToggle = $('#playerLyricsToggle');
+
+  if (window.__PIPI_IOS__) {
+    playerLyrics.appendChild(elLyricBody);
+    $('#playbar').after($('.sidebar'));
+  }
+
+  function syncVisiblePlayerLyrics() {
+    if (playerLyrics.hidden) return;
+    state.lyricIdx = null;
+    syncLyric(audio.currentTime);
+  }
+
+  playerLyricsToggle.addEventListener('click', () => {
+    playerLyrics.hidden = !playerLyrics.hidden;
+    playerLyricsToggle.setAttribute('aria-pressed', String(!playerLyrics.hidden));
+    syncVisiblePlayerLyrics();
+  });
 
   function setPlayerExpanded(expanded) {
     document.body.classList.toggle('player-expanded', expanded);
     openPlayer.setAttribute('aria-expanded', String(expanded));
+    if (expanded) syncVisiblePlayerLyrics();
     (expanded ? closePlayer : openPlayer).focus();
   }
 

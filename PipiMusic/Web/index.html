@@ -94,6 +94,10 @@
         <h2 id="searchTitle">搜索结果</h2>
         <span id="searchMeta"></span>
       </div>
+      <details class="search-history" id="searchHistory" hidden open>
+        <summary>搜索历史</summary>
+        <div class="chips" id="searchHistoryList"></div>
+      </details>
       <div class="songs" id="searchList"></div>
     </section>
 
@@ -190,8 +194,10 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
       </button>
       <span>正在播放</span>
+      <button type="button" id="playerLyricsToggle" aria-controls="playerLyrics" aria-pressed="false">歌词</button>
     </div>
     <div class="now">
+      <section id="playerLyrics" aria-label="同步歌词" hidden></section>
       <div class="disc" id="disc">
         <img id="nowCover" alt="">
         <div class="disc-hole"></div>

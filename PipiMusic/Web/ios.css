@@ -236,10 +236,69 @@ body.ios input, body.ios textarea {
 
 #seekBar { touch-action: none; }
 
+body.ios .app {
+  height: 100vh;
+  height: 100dvh;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  grid-template-areas: "main" "bar" "side";
+}
+
+body.ios .sidebar {
+  flex-direction: row;
+  border: 0;
+  border-top: 1px solid var(--line);
+  padding: 4px max(4px, env(safe-area-inset-right))
+    calc(4px + env(safe-area-inset-bottom)) max(4px, env(safe-area-inset-left));
+  background: rgba(13, 17, 24, .96);
+  overflow: auto hidden;
+}
+
+body.ios .nav {
+  flex-direction: row;
+  justify-content: space-between;
+  width: 100%;
+  gap: 0;
+}
+
+body.ios .nav-item {
+  flex: 1 0 44px;
+  min-width: 44px;
+  min-height: 44px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  padding: 4px;
+  white-space: nowrap;
+}
+
+body.ios .nav-item span { font-size: 10px; }
+body.ios .brand,
+body.ios .side-foot,
+body.ios #lyricsPane,
+body.ios #lyricToggle { display: none; }
+
+body.ios .search-history {
+  margin: 12px 4px;
+  color: var(--dim);
+}
+
+body.ios .search-history summary { padding: 12px 0; cursor: pointer; }
+body.ios .search-history .chips { margin-top: 0; }
+body.ios .search-history .chips button {
+  min-height: 44px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 body.ios .playbar {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   padding-inline: max(12px, env(safe-area-inset-left)) max(12px, env(safe-area-inset-right));
+  padding-bottom: 0;
+  min-height: 64px;
 }
 
 body.ios .playbar .now { gap: 8px; }
@@ -297,11 +356,31 @@ body.ios.player-expanded .player-heading {
   font-weight: 700;
 }
 
+#playerLyricsToggle {
+  margin-left: auto;
+  min-width: 56px;
+  min-height: 44px;
+  border: 0;
+  border-radius: 22px;
+  background: var(--hover);
+  color: var(--text);
+}
+
+#playerLyricsToggle[aria-pressed="true"] {
+  background: var(--acc);
+  color: #0b0d12;
+}
+
+body.ios .playbar button:active,
+body.ios .nav-item:active,
+body.ios .search-history button:active { opacity: .72; }
+
 #closePlayer { display: grid; }
 body.ios.player-expanded #openPlayer { display: none; }
 
 body.ios.player-expanded .playbar .now {
   display: grid;
+  position: relative;
   grid-template-columns: minmax(0, 1fr) auto;
   margin-block: auto;
   gap: 12px;
@@ -309,11 +388,43 @@ body.ios.player-expanded .playbar .now {
 
 body.ios.player-expanded .disc {
   grid-column: 1 / -1;
+  grid-row: 1;
   justify-self: center;
   width: min(100%, 320px, 43vh);
   height: auto;
   border-radius: 20px;
   animation: none;
+}
+
+body.ios.player-expanded #playerLyrics:not([hidden]) {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  position: absolute;
+  inset: 0;
+  display: flex;
+}
+
+#playerLyrics:not([hidden]) + .disc { visibility: hidden; }
+body.ios:not(.player-expanded) #playerLyrics { display: none; }
+body.ios:not(.player-expanded) #playerLyrics + .disc { visibility: visible; }
+
+#playerLyrics .lyric-body {
+  position: relative;
+  overscroll-behavior: contain;
+  padding-inline: 4px;
+}
+
+#playerLyrics .lyric-list li,
+#playerLyrics .lyric-list li.cur {
+  font-size: clamp(17px, 4.7vw, 25px);
+  line-height: 1.45;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.ios.spinning .disc { animation: none; }
+  #playerLyrics .lyric-body { scroll-behavior: auto; }
+  #playerLyrics .lyric-list li { transition: none; }
 }
 
 body.ios.player-expanded .disc::before {
