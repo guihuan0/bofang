@@ -11,6 +11,9 @@ final class WebController: UIViewController, WKNavigationDelegate, WKUIDelegate 
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        NotificationCenter.default.addObserver(self, selector: #selector(publishNowPlaying),
+                                               name: UIApplication.didEnterBackgroundNotification,
+                                               object: nil)
         bridge.onPlayerAppearance = { [weak self] expanded in
             self?.lightPlayer = expanded
             self?.setNeedsStatusBarAppearanceUpdate()
@@ -62,6 +65,10 @@ final class WebController: UIViewController, WKNavigationDelegate, WKUIDelegate 
         ])
 
         loadUI()
+    }
+
+    @objc private func publishNowPlaying() {
+        bridge.publishActiveNowPlaying()
     }
 
     private func loadUI() {

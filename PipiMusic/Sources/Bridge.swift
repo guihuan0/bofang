@@ -1,5 +1,6 @@
 import UIKit
 import WebKit
+import MediaPlayer
 
 /// JS <-> Swift 的桥。JS 发 {id, cmd, args}，Swift 用
 /// window.__pipiResolve(id, ok, payload) 回话。
@@ -12,6 +13,15 @@ final class Bridge: NSObject, WKScriptMessageHandler {
     private let queue = DispatchQueue(label: "pipi.bridge", qos: .userInitiated)
     private let mediaQueue = DispatchQueue(label: "pipi.media", qos: .userInitiated, attributes: .concurrent)
     private let lock = NSLock()
+    private var playbackInfo: [String: Any] = [:]
+    private var artworkURL: URL?
+    private var artworkTask: URLSessionDataTask?
+    private lazy var fallbackArtwork: MPMediaItemArtwork? = {
+        let url = Bundle.main.url(forResource: "AppIcon1024", withExtension: "png", subdirectory: "Web")
+            ?? Bundle.main.url(forResource: "AppIcon1024", withExtension: "png")
+        guard let url = url, let image = UIImage(contentsOfFile: url.path) else { return nil }
+        return MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+    }()
 
     // MARK: - 收消息
 
@@ -22,10 +32,55 @@ final class Bridge: NSObject, WKScriptMessageHandler {
               let cmd = body["cmd"] as? String else { return }
 
         let args = body["args"] as? [Any] ?? []
+        if cmd == "nowPlaying" {
+            DispatchQueue.main.async { [weak self] in
+                self?.updateNowPlaying(args.first as? [String: Any] ?? [:])
+                self?.reply(reqId, ok: true, ["ok": true])
+            }
+            return
+        }
         let target = ["play", "cover", "lyric", "lyricSearch", "download", "dlStatus"].contains(cmd) ? mediaQueue : queue
         target.async { [weak self] in
             self?.dispatch(reqId: reqId, cmd: cmd, args: args)
         }
+    }
+
+    private func updateNowPlaying(_ payload: [String: Any]) {
+        guard let title = payload["title"] as? String, !title.isEmpty else { return }
+        playbackInfo[MPMediaItemPropertyTitle] = title
+        playbackInfo[MPMediaItemPropertyArtist] = payload["artist"] as? String ?? ""
+        playbackInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = payload["elapsed"] as? NSNumber
+        playbackInfo[MPMediaItemPropertyPlaybackDuration] = payload["duration"] as? NSNumber
+        playbackInfo[MPNowPlayingInfoPropertyPlaybackRate] = payload["rate"] as? NSNumber
+
+        let cover = (payload["cover"] as? String).flatMap { URL(string: $0) }
+            .flatMap { ["http", "https"].contains($0.scheme ?? "") ? $0 : nil }
+        if cover != artworkURL || playbackInfo[MPMediaItemPropertyArtwork] == nil {
+            artworkTask?.cancel()
+            artworkURL = cover
+            playbackInfo[MPMediaItemPropertyArtwork] = fallbackArtwork
+            if let cover = cover {
+                var request = URLRequest(url: cover, timeoutInterval: 10)
+                request.setValue(PipiClient.USER_AGENT, forHTTPHeaderField: "User-Agent")
+                artworkTask = URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
+                    guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                          let data = data, let image = UIImage(data: data) else { return }
+                    DispatchQueue.main.async {
+                        guard let self = self, self.artworkURL == cover else { return }
+                        self.playbackInfo[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+                        MPNowPlayingInfoCenter.default().nowPlayingInfo = self.playbackInfo
+                    }
+                }
+                artworkTask?.resume()
+            }
+        }
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = playbackInfo
+    }
+
+    func publishActiveNowPlaying() {
+        guard let rate = playbackInfo[MPNowPlayingInfoPropertyPlaybackRate] as? NSNumber,
+              rate.doubleValue > 0 else { return }
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = playbackInfo
     }
 
     private func reply(_ reqId: Int, ok: Bool, _ payload: Any) {
@@ -64,8 +119,9 @@ final class Bridge: NSObject, WKScriptMessageHandler {
                 reply(reqId, ok: true, ["ok": true])
 
             case "sources":
-                let list = SoundSource.all.map { ["id": $0.id, "label": $0.label] }
-                reply(reqId, ok: true, ["items": list, "default": "vipp3"])
+                let ordered = SoundSource.all.filter { $0.id == "33ve" } + SoundSource.all.filter { $0.id != "33ve" }
+                let list = ordered.map { ["id": $0.id, "label": $0.label] }
+                reply(reqId, ok: true, ["items": list, "default": "33ve"])
 
             case "search":
                 let kw = argStr(args, 0)

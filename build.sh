@@ -24,7 +24,8 @@ xcrun -sdk iphoneos swiftc \
   "$SRC"/*.swift \
   -framework UIKit \
   -framework WebKit \
-  -framework AVFoundation
+  -framework AVFoundation \
+  -framework MediaPlayer
 
 echo "==> bundle resources"
 cp "$ROOT/$APP_NAME/Info.plist" "$OUT/Payload/$APP_NAME.app/Info.plist"

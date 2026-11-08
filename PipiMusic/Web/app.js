@@ -56,7 +56,7 @@
     favs: [],
     mode: 'sequential',
     visible: false,
-    source: 'vipp3',
+    source: '33ve',
     sources: [],
   };
   let lastSearchResults = [];
@@ -115,7 +115,7 @@
     api('/api/sources')
       .then((res) => {
         state.sources = res.items || [];
-        state.source = res.default || 'vipp3';
+        state.source = res.default || '33ve';
         renderSources();
       })
       .catch(() => {});
@@ -144,7 +144,7 @@
   }
 
   function currentSource() {
-    return state.source || 'vipp3';
+    return state.source || '33ve';
   }
 
   // ---------------------------------------------------------- 下载
@@ -1425,6 +1425,17 @@
   }
 
   function updateSystemPlayback(playing) {
+    const track = state.current;
+    if (window.__pipiCall && track && (track.local || track === loadedTrack)) {
+      window.__pipiCall('nowPlaying', {
+        title: track.title,
+        artist: track.artist,
+        cover: track.cover ? elNowCover.src : '',
+        elapsed: audio.currentTime || 0,
+        duration: Number.isFinite(audio.duration) ? audio.duration : 0,
+        rate: playing ? audio.playbackRate : 0,
+      }).catch(() => {});
+    }
     if (!mediaSession) return;
     try {
       mediaSession.playbackState = playing ? 'playing' : 'paused';
@@ -1454,7 +1465,9 @@
 
   audio.addEventListener('loadedmetadata', () => {
     elTDur.textContent = fmtTime(audio.duration || 0);
+    if (!audio.paused) updateSystemPlayback(true);
   });
+  audio.addEventListener('seeked', () => updateSystemPlayback(!audio.paused));
 
   audio.addEventListener('play', () => {
     updateSystemPlayback(true);
