@@ -6,10 +6,15 @@ final class WebController: UIViewController, WKNavigationDelegate, WKUIDelegate 
     private var webView: WKWebView!
     private let bridge = Bridge()
 
-    override var preferredStatusBarStyle: UIStatusBarStyle { .lightContent }
+    private var lightPlayer = false
+    override var preferredStatusBarStyle: UIStatusBarStyle { lightPlayer ? .darkContent : .lightContent }
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        bridge.onPlayerAppearance = { [weak self] expanded in
+            self?.lightPlayer = expanded
+            self?.setNeedsStatusBarAppearanceUpdate()
+        }
         view.backgroundColor = UIColor(red: 0.082, green: 0.071, blue: 0.063, alpha: 1)
 
         let config = WKWebViewConfiguration()

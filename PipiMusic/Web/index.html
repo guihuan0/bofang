@@ -218,7 +218,6 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
       </button>
       <span>正在播放</span>
-      <button type="button" id="queueToggle" aria-controls="playerQueue" aria-expanded="false">播放列表</button>
     </div>
     <div class="now">
       <section id="playerQueue" aria-labelledby="queueTitle" tabindex="-1" hidden>
@@ -230,6 +229,24 @@
         <p id="queueEmpty">收藏或搜索歌曲后即可播放</p>
       </section>
       <section id="playerLyrics" aria-label="同步歌词" tabindex="-1" hidden></section>
+      <div class="turntable" aria-hidden="true">
+        <span class="turntable-switch"></span>
+        <svg class="tonearm" viewBox="0 0 100 100">
+          <defs>
+            <linearGradient id="armSteel">
+              <stop stop-color="#3c4247"/><stop offset=".52" stop-color="#dce1e4"/><stop offset="1" stop-color="#4e555a"/>
+            </linearGradient>
+          </defs>
+          <circle cx="86" cy="15" r="7.4" fill="#24292d" stroke="#4b5358" stroke-width="1.4"/>
+          <circle cx="86" cy="15" r="4.5" fill="url(#armSteel)" stroke="#8e979d" stroke-width=".9"/>
+          <path d="M86 22v41c0 8-2 13-6 18l-7 8" fill="none" stroke="#272d31" stroke-width="3.5"/>
+          <path d="M86 22v41c0 8-2 13-6 18l-7 8" fill="none" stroke="url(#armSteel)" stroke-width="2.1"/>
+          <g transform="translate(72 91) rotate(34)">
+            <rect x="-2.6" y="-5" width="5.2" height="9" rx=".7" fill="url(#armSteel)" stroke="#33383c" stroke-width=".7"/>
+            <rect x="-1.4" y="-1" width="2.8" height="3.3" rx=".4" fill="#23272a"/>
+          </g>
+        </svg>
+      </div>
       <button type="button" id="openPlayer" aria-label="展开播放页" aria-controls="playbar" aria-expanded="false">
         <span class="disc" id="disc">
           <img id="nowCover" alt="">
@@ -261,7 +278,13 @@
         <button class="ctl sm" id="btnNext" title="下一首">
           <svg viewBox="0 0 24 24"><path d="M5 5l10 7-10 7zM18 5v14"/></svg>
         </button>
-        <button type="button" class="ctl sm" id="btnLoop">顺序播放</button>
+        <button type="button" class="ctl sm" id="btnLoop">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4m14-1v2a3 3 0 0 1-3 3H3"/></svg>
+          <span id="playModeLabel">顺序播放</span>
+        </button>
+        <button type="button" class="ctl sm" id="queueToggle" aria-label="播放列表" aria-controls="playerQueue" aria-expanded="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18M3 11h18M3 17h9m4-2 5 3-5 3z"/></svg>
+        </button>
       </div>
       <div class="progress-row">
         <span class="t" id="tCur">0:00</span>

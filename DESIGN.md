@@ -2,7 +2,7 @@
 
 ## Direction
 
-Operate mode for browsing and settings. The immersive player gives album art or lyrics the most space. The selected palette is warm black with copper-orange for active controls.
+Operate mode for browsing and settings. Browsing uses warm black with copper-orange for active controls. The immersive player follows the light turntable reference with a silver deck, album art on the record, and a pale blue lower surface.
 
 ## System
 

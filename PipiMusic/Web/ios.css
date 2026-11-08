@@ -844,3 +844,163 @@ body.ios.player-expanded .fav-btn {
   border-radius: 14px;
   background: var(--panel-2);
 }
+
+/* Light turntable player */
+.turntable { display: none; }
+
+body.ios.player-expanded .playbar {
+  --text: #1b2329;
+  --dim: #4c5d69;
+  --dim-2: #54636e;
+  --panel: #f1f4f6;
+  --panel-2: #e3e9ee;
+  --hover: #dce5ed;
+  --line-2: #8b9ba8;
+  --acc: #2e526b;
+  --pink: #a52e46;
+  --deck: min(100%, 400px, 42vh);
+  color: var(--text);
+  color-scheme: light;
+  background:
+    radial-gradient(ellipse at 87% 110%, #c5c7e9 0, transparent 58%),
+    linear-gradient(180deg, #fff 35%, #f5f9fc 66%, #c8e4f3 100%);
+}
+
+body.ios.player-expanded .player-heading { justify-content: center; position: relative; min-height: 44px; }
+body.ios.player-expanded #closePlayer { position: absolute; left: 0; background: transparent; color: var(--text); }
+body.ios.player-expanded #closePlayer svg { width: 24px; height: 24px; }
+body.ios.player-expanded .playbar .now { gap: 12px; }
+
+body.ios.player-expanded .turntable,
+body.ios.player-expanded .disc {
+  grid-area: 1 / 1 / 2 / -1;
+  justify-self: center;
+  align-self: center;
+}
+
+body.ios.player-expanded .turntable {
+  display: block;
+  position: relative;
+  width: var(--deck);
+  aspect-ratio: 1;
+  border: 1px solid #a8afb4;
+  border-radius: 16px;
+  background: linear-gradient(145deg, #e0e5e8, #aeb8be 66%, #9da7ae);
+  box-shadow: 0 16px 24px #303b4540;
+}
+@supports not (aspect-ratio: 1) {
+  body.ios.player-expanded .turntable::before { content: ""; display: block; padding-top: 100%; }
+}
+
+.tonearm { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; overflow: visible; }
+.turntable-switch {
+  position: absolute;
+  left: 6%;
+  bottom: 7%;
+  width: 4%;
+  height: 10%;
+  border-radius: 50% 50% 45% 45%;
+  background: linear-gradient(90deg, #24292c, #555d63 45%, #262c30);
+  transform: rotate(-8deg);
+}
+
+body.ios.player-expanded .playbar .disc {
+  z-index: 1;
+  width: calc(var(--deck) * .82);
+  border: 1px solid #0b0e10;
+  border-radius: 50%;
+  background: repeating-radial-gradient(circle, #141617 0 3px, #242627 4px, #111314 5px);
+  box-shadow: 0 0 0 3px #778187, 0 0 0 6px #9ba5aa, 0 6px 14px #242b3070;
+  margin-right: 4%;
+}
+body.ios.player-expanded .disc::before { color: #dce3e9; }
+body.ios.player-expanded .playbar .disc img {
+  inset: 21%;
+  width: 58%;
+  height: 58%;
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px #34383b;
+  animation: none;
+}
+body.ios.player-expanded.playing .disc img { animation: spin 16s linear infinite; }
+
+body.ios.player-expanded #playerLyrics:not([hidden]) ~ .turntable,
+body.ios.player-expanded #playerQueue:not([hidden]) ~ .turntable { visibility: hidden; }
+body.ios.player-expanded #playerLyrics:not([hidden]),
+body.ios.player-expanded #playerQueue:not([hidden]) { z-index: 3; }
+body.ios.player-expanded #playerLyrics .lyric-list li { color: var(--dim); opacity: 1; text-shadow: none; }
+body.ios.player-expanded #playerLyrics .lyric-list li.cur { color: var(--text); }
+body.ios.player-expanded #playerLyrics .lyric-empty { color: var(--dim); }
+
+body.ios.player-expanded .playbar .fav-btn {
+  background: transparent;
+  color: var(--dim);
+}
+body.ios.player-expanded .playbar .fav-btn.on { color: var(--pink); }
+body.ios.player-expanded .playbar .fav-btn svg { width: 29px; height: 29px; }
+
+body.ios.player-expanded .playbar .right { order: 1; }
+body.ios.player-expanded .playbar .center { order: 2; }
+body.ios.player-expanded .playbar .right .mini,
+body.ios.player-expanded .playbar #btnPrev,
+body.ios.player-expanded .playbar #btnNext,
+body.ios.player-expanded .playbar #queueToggle,
+body.ios.player-expanded .playbar #btnLoop {
+  background: transparent;
+  color: var(--text);
+}
+body.ios.player-expanded .playbar .right .mini:active,
+body.ios.player-expanded .playbar .controls .ctl.sm:active { background: var(--hover); }
+
+body.ios.player-expanded .playbar .controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(44px, 1fr)) auto repeat(2, minmax(44px, 1fr));
+  justify-items: center;
+  width: 100%;
+  gap: 0;
+}
+body.ios.player-expanded #btnLoop { order: 0; min-width: 44px; }
+body.ios.player-expanded #btnPrev { order: 1; }
+body.ios.player-expanded #btnPlay { order: 2; }
+body.ios.player-expanded #btnNext { order: 3; }
+body.ios.player-expanded #queueToggle { order: 4; margin: 0; }
+body.ios.player-expanded #btnLoop {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+body.ios.player-expanded #btnLoop svg,
+body.ios.player-expanded #queueToggle svg { width: 24px; height: 24px; }
+body.ios.player-expanded #btnLoop.on,
+body.ios.player-expanded #queueToggle[aria-expanded="true"] { color: var(--acc); }
+body.ios.player-expanded #btnPlay {
+  width: clamp(58px, 17vw, 72px);
+  height: clamp(58px, 17vw, 72px);
+  background: transparent;
+  border: 2px solid var(--text);
+  color: var(--text);
+}
+body.ios.player-expanded #btnPlay svg { width: 30px; height: 30px; }
+body.ios.player-expanded .progress-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+}
+body.ios.player-expanded #seekBar { grid-area: 1 / 1 / 2 / -1; height: 28px; }
+body.ios.player-expanded #tCur { grid-area: 2 / 1; text-align: left; }
+body.ios.player-expanded #tDur { grid-area: 2 / 2; justify-self: end; text-align: right; }
+body.ios.player-expanded .bar-bg { background: #8297a966; }
+body.ios.player-expanded .bar-fill,
+body.ios.player-expanded .bar-knob { background: var(--text); box-shadow: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  body.ios.player-expanded.playing .disc img { animation: none; }
+}
+
+@media (min-width: 620px) and (max-height: 560px) {
+  body.ios.player-expanded .playbar { --deck: min(100%, 48vh); }
+  body.ios.player-expanded .playbar .right { grid-column: 2; grid-row: 2; align-self: end; }
+  body.ios.player-expanded .playbar .center { grid-column: 2; grid-row: 3; }
+}

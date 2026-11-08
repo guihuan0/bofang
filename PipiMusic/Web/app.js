@@ -1314,7 +1314,7 @@
 
   function paintMode() {
     audio.loop = state.mode === 'repeatOne';
-    modeButton.textContent = playModes[state.mode];
+    $('#playModeLabel').textContent = playModes[state.mode];
     modeButton.classList.toggle('on', state.mode !== 'sequential');
     modeButton.setAttribute('aria-label', playModes[state.mode] + '，点击切换播放模式');
   }
@@ -1603,6 +1603,7 @@
 
   function setPlayerExpanded(expanded) {
     document.body.classList.toggle('player-expanded', expanded);
+    if (window.__pipiCall) window.__pipiCall('playerAppearance', expanded).catch(() => {});
     openPlayer.setAttribute('aria-expanded', String(expanded));
     openPlayer.disabled = expanded;
     if (!expanded) {
