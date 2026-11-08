@@ -568,3 +568,253 @@ body.ios.player-expanded #btnPrev { order: -1; }
 body.ios.player-expanded .right { justify-content: center; }
 body.ios.player-expanded .right .mini { width: 44px; height: 44px; }
 body.ios.player-expanded .right .vbar { display: none; }
+/* iOS visual system */
+.screen-title { display: none; }
+
+body.ios {
+  --bg: #151210;
+  --bg-2: #1a1614;
+  --panel: #211b18;
+  --panel-2: #2c231e;
+  --hover: #352923;
+  --line: #3b302a;
+  --line-2: #5c4a3e;
+  --text: #fff3e7;
+  --dim: #c7b2a2;
+  --dim-2: #b29c8d;
+  --acc: #f4a36e;
+  --acc-2: #f4a36e;
+  --acc-3: #dc8250;
+  --pink: #ffab9b;
+  --on-accent: #26140c;
+  --gutter: clamp(16px, 5vw, 32px);
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", system-ui, sans-serif;
+  color-scheme: dark;
+}
+
+body.ios::before { display: none; }
+body.ios :focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+body.ios input { caret-color: var(--acc); }
+body.ios .main { padding: 0; }
+
+body.ios .topbar {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px 12px;
+  width: 100%;
+  max-width: 920px;
+  margin-inline: auto;
+  padding: calc(12px + env(safe-area-inset-top))
+    max(var(--gutter), env(safe-area-inset-right)) 8px
+    max(var(--gutter), env(safe-area-inset-left));
+}
+
+body.ios .screen-title {
+  display: block;
+  grid-area: 1 / 1;
+  font-size: clamp(26px, 7vw, 36px);
+  font-weight: 750;
+  line-height: 1.25;
+  letter-spacing: -.03em;
+}
+
+body.ios .toprow, body.ios .sources { grid-column: 1 / -1; min-width: 0; }
+body.ios .toprow { margin-top: 4px; }
+body.ios .app:not([data-view="search"]) .toprow,
+body.ios .app:not([data-view="search"]):not([data-view="top"]) .sources { display: none; }
+
+body.ios .searchbox {
+  min-width: 0;
+  height: 52px;
+  padding: 3px 3px 3px 38px;
+  background: var(--panel);
+  border-radius: 14px;
+}
+body.ios .searchbox:focus-within { border-color: var(--acc); box-shadow: none; }
+body.ios .searchbox input { min-width: 0; width: 0; font-size: 16px; }
+body.ios .searchbox .go {
+  flex: none;
+  min-height: 44px;
+  padding-inline: 14px;
+  background: var(--acc);
+  color: var(--on-accent);
+  font-size: 14px;
+}
+body.ios .sources { gap: 8px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+body.ios .source-chip { min-height: 44px; flex: none; padding: 0 10px; }
+body.ios .source-chip.active { background: var(--hover); color: var(--acc); border-color: var(--line-2); }
+body.ios .source-chip .dot { display: none; }
+body.ios .source-hint { display: none; }
+
+body.ios .media-settings { grid-area: 1 / 2; }
+body.ios .media-settings summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 10px;
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--text);
+}
+body.ios .media-settings summary::-webkit-details-marker { display: none; }
+body.ios .media-settings[open] summary { color: var(--acc); }
+body.ios .media-settings-options {
+  position: absolute;
+  top: calc(64px + env(safe-area-inset-top));
+  right: max(var(--gutter), env(safe-area-inset-right));
+  left: max(var(--gutter), env(safe-area-inset-left));
+  margin-left: auto;
+  max-width: 320px;
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--line-2);
+  border-radius: 14px;
+  background: var(--panel);
+}
+body.ios .media-settings-options label { justify-content: space-between; }
+body.ios .media-settings-options select { background: var(--bg); }
+
+body.ios .view {
+  width: 100%;
+  max-width: 920px;
+  margin-inline: auto;
+  padding: 8px max(var(--gutter), env(safe-area-inset-right)) 22px
+    max(var(--gutter), env(safe-area-inset-left));
+}
+body.ios .hero { padding: 4px 0 12px; }
+.search-feature {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(92px, 30vw, 160px);
+  align-items: center;
+  gap: 12px;
+  min-height: 162px;
+  padding: clamp(14px, 5vw, 24px);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #31231b;
+}
+.search-feature h2 { font-size: clamp(22px, 5.7vw, 32px); line-height: 1.25; letter-spacing: -.03em; }
+.search-feature p { line-height: 1.5; }
+.search-record {
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 1px solid #73503c;
+  background: radial-gradient(circle, #151210 0 3%, #dd8954 4% 22%, #171311 23% 25%,
+    transparent 26%), repeating-radial-gradient(circle, #191514 0 4px, #3d2c23 5px, #191514 6px);
+  box-shadow: 0 8px 18px #160d08a6;
+}
+@supports not (aspect-ratio: 1) {
+  .search-record::before { content: ""; display: block; padding-top: 100%; }
+}
+.search-suggestions-title { margin-top: 22px; font-size: 14px; color: var(--dim); font-weight: 650; }
+body.ios .hero .chips { margin-top: 8px; }
+body.ios .chips button { min-height: 44px; padding-inline: 12px; background: var(--panel); color: var(--text); }
+body.ios .search-history { margin: 2px 0 12px; }
+body.ios .search-history summary { min-height: 44px; }
+
+body.ios .list-head { padding-inline: 0; }
+body.ios .song {
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  gap: 8px;
+  min-height: 56px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  animation: none;
+}
+body.ios .song .idx { display: none; }
+body.ios .song .cov { width: 36px; height: 36px; background: var(--panel); }
+body.ios .song .cov svg { stroke: var(--dim); }
+body.ios .song .act { opacity: 1; gap: 0; }
+body.ios .song .act .icon-btn { width: 44px; height: 44px; }
+body.ios .song.playing { background: var(--panel); box-shadow: none; }
+body.ios .tab, body.ios .dl-row .icon-btn, body.ios .pl-track .icon-btn { min-height: 44px; }
+body.ios .import-box { background: var(--panel); }
+body.ios .import-box textarea { font-size: 16px; }
+body.ios .primary-btn { min-height: 44px; background: var(--acc); color: var(--on-accent); }
+
+body.ios .sidebar {
+  background: var(--bg);
+  padding: 3px max(6px, env(safe-area-inset-right))
+    calc(4px + env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left));
+}
+body.ios .nav { max-width: 620px; margin-inline: auto; }
+body.ios .nav-item {
+  flex: 1 1 0;
+  min-width: 44px;
+  min-height: 48px;
+  gap: 4px;
+  padding: 2px;
+  color: var(--dim);
+}
+body.ios .nav-item.active { color: var(--acc); background: var(--panel); box-shadow: none; }
+body.ios .nav-item span { font-size: 11px; }
+body.ios .nav-item .badge { display: none; }
+body.ios .nav-item svg { width: 20px; height: 20px; }
+
+body.ios:not(.player-expanded) .playbar {
+  height: auto;
+  min-height: 66px;
+  background: var(--panel);
+  padding-inline: max(var(--gutter), env(safe-area-inset-left))
+    max(var(--gutter), env(safe-area-inset-right));
+  position: relative;
+}
+body.ios:not(.player-expanded) .playbar::before {
+  content: "";
+  position: absolute;
+  inset: -1px auto auto 0;
+  width: var(--play-progress, 0%);
+  height: 2px;
+  background: var(--acc);
+  pointer-events: none;
+}
+body.ios:not(.player-expanded) .playbar .disc { width: 42px; height: 42px; }
+body.ios .playbar .disc { background-color: var(--bg); }
+body.ios .playbar .fav-btn { width: 44px; height: 44px; }
+body.ios #btnPlay { width: 44px; height: 44px; background: var(--acc); color: var(--on-accent); box-shadow: none; }
+body.ios #btnPlay:active, body.ios .source-chip:active { transform: scale(.96); }
+
+body.ios.player-expanded .playbar {
+  gap: 12px;
+  background: linear-gradient(180deg, #31231c, var(--bg) 72%);
+  backdrop-filter: none;
+}
+body.ios.player-expanded .player-heading { font-size: 15px; }
+body.ios.player-expanded #closePlayer,
+body.ios.player-expanded #queueToggle { background: var(--hover); }
+body.ios.player-expanded .disc {
+  width: min(100%, 340px, 37vh);
+  border-radius: 16px;
+  box-shadow: 0 14px 24px #10090665;
+}
+body.ios.player-expanded .now-title { font-size: clamp(22px, 6vw, 30px); line-height: 1.2; }
+body.ios.player-expanded #playerLyricsPreview { padding: 8px 0 5px; }
+body.ios.player-expanded #playerLyricCurrent { color: var(--acc); }
+body.ios.player-expanded #playerLyricsPreview:disabled #playerLyricCurrent { color: var(--dim); }
+body.ios.player-expanded #btnPlay { width: 60px; height: 60px; }
+body.ios.player-expanded #btnLoop { color: var(--text); }
+body.ios.player-expanded #btnLoop.on { color: var(--acc); background: var(--hover); }
+body.ios .bar-fill { background: var(--acc); }
+body.ios .bar-knob { box-shadow: 0 0 0 3px var(--line-2); }
+
+@media (min-width: 620px) and (max-height: 560px) {
+  body.ios.player-expanded .playbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 28px;
+  }
+  body.ios.player-expanded .player-heading { grid-column: 1 / -1; max-width: 100%; }
+  body.ios.player-expanded .playbar .now { grid-row: 2 / 4; align-self: start; justify-self: center; }
+  body.ios.player-expanded .playbar .center,
+  body.ios.player-expanded .playbar .right { justify-self: center; }
+  body.ios.player-expanded .disc { width: min(100%, 32vh); }
+}

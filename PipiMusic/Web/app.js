@@ -448,7 +448,16 @@
   // ---------------------------------------------------------- 视图切换
   function switchView(name) {
     state.view = name;
-    $$('.nav-item').forEach((b) => b.classList.toggle('active', b.dataset.view === name));
+    $('#app').dataset.view = name;
+    $('#mediaSettings').open = false;
+    const titles = { search: '皮皮音乐', top: '榜单', fav: '我的收藏', playlist: '歌单', history: '最近播放', downloads: '已下载' };
+    $('#screenTitle').textContent = titles[name];
+    $$('.nav-item').forEach((b) => {
+      const active = b.dataset.view === name;
+      b.classList.toggle('active', active);
+      if (active) b.setAttribute('aria-current', 'page');
+      else b.removeAttribute('aria-current');
+    });
     $$('.view').forEach((v) => v.classList.toggle('active', v.id === 'view-' + name));
     if (name === 'fav') loadFavs();
     if (name === 'history') loadHistory();
@@ -1354,6 +1363,7 @@
     const d = audio.duration || 0;
     const c = audio.currentTime || 0;
     const p = d ? (c / d) * 100 : 0;
+    $('#playbar').style.setProperty('--play-progress', p + '%');
     elSeekFill.style.width = p + '%';
     elSeekKnob.style.left = p + '%';
     elTCur.textContent = fmtTime(c);
@@ -1613,6 +1623,7 @@
       setVol(audio.volume - 0.05);
     } else if (e.key === '/') {
       e.preventDefault();
+      if (state.view !== 'search') switchView('search');
       elSearch.focus();
     }
   });
@@ -1642,7 +1653,7 @@
   if (q0) {
     elSearch.value = q0;
     doSearch(q0);
-  } else {
+  } else if (!window.__PIPI_IOS__) {
     elSearch.focus();
   }
 

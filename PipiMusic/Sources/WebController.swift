@@ -10,7 +10,7 @@ final class WebController: UIViewController, WKNavigationDelegate, WKUIDelegate 
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = UIColor(red: 0.043, green: 0.051, blue: 0.071, alpha: 1)
+        view.backgroundColor = UIColor(red: 0.082, green: 0.071, blue: 0.063, alpha: 1)
 
         let config = WKWebViewConfiguration()
         config.allowsInlineMediaPlayback = true
