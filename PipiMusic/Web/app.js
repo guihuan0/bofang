@@ -54,11 +54,14 @@
     lyrics: [],
     lyricIdx: -1,
     favs: [],
-    loop: false,
+    mode: 'sequential',
     visible: false,
     source: 'vipp3',
     sources: [],
   };
+  let lastSearchResults = [];
+  let shuffledOrder = [];
+  let loadedTrack = null;
 
   let toastTimer = null;
 
@@ -346,6 +349,7 @@
   function playLocal(f) {
     state.queue = [];
     state.index = -1;
+    shuffledOrder = [];
     state.current = {
       id: 'local:' + f.name,
       title: f.title || f.name,
@@ -376,6 +380,7 @@
     elMiniEq.classList.add('on');
 
     paintPlaying();
+    renderQueue();
     loadLocalLyric(f);
   }
 
@@ -640,8 +645,8 @@
       .then((res) => {
         if (!res.ok) throw new Error(res.error || '搜索失败');
         const items = res.items || [];
-        state.queue = items;
-        state.index = -1;
+        lastSearchResults = items;
+        renderQueue();
         elSearchMeta.textContent = items.length ? items.length + ' 首' : '没有结果';
         elSideTip.textContent = items.length ? '找到 ' + items.length + ' 首' : '没有结果';
         renderList(elSearchList, items, {
@@ -702,6 +707,7 @@
     api('/api/fav')
       .then((res) => {
         state.favs = res.items || [];
+        renderQueue();
         elFavCount.textContent = state.favs.length;
         elFavMeta.textContent = state.favs.length ? state.favs.length + ' 首' : '';
         renderList(elFavList, state.favs, {
@@ -727,6 +733,7 @@
       .then((res) => {
         if (!res.ok) throw new Error(res.error || '操作失败');
         state.favs = res.items || [];
+        renderQueue();
         elFavCount.textContent = state.favs.length;
         elFavMeta.textContent = state.favs.length ? state.favs.length + ' 首' : '';
         toast(wasFav ? '已取消收藏' : '已收藏');
@@ -760,13 +767,10 @@
       }, 'DELETE').then(() => loadFavs());
       return;
     }
-    // 其它视图：仅从界面上的当前队列移除
+    // 浏览列表的操作不改变已经开始播放的队列。
     const box = state.view === 'top' ? elTopList : elSearchList;
     const row = box.querySelector('.song[data-key="' + CSS.escape(k) + '"]');
     if (row) row.remove();
-    const q = state.queue.filter((x) => favKey(x) !== k);
-    state.queue = q;
-    if (state.view === 'top') state.queue = q;
   }
 
   // ---------------------------------------------------------- 历史
@@ -1077,6 +1081,16 @@
   // ---------------------------------------------------------- 播放
   function playItem(item, queue) {
     if (!item) return;
+    if (queue !== undefined) {
+      const tracks = state.favs.length ? state.favs : queue;
+      state.queue = tracks.slice();
+      state.index = state.queue.findIndex((song) => favKey(song) === favKey(item));
+      if (state.index === -1) {
+        state.queue.unshift(item);
+        state.index = 0;
+      }
+      resetShuffle();
+    }
     state.current = {
       id: item.id,
       title: item.title || item.raw || '未知歌曲',
@@ -1086,10 +1100,7 @@
       source: item.source || currentSource(),
     };
     const track = state.current;
-    if (queue && queue.length) {
-      state.queue = queue;
-      state.index = queue.findIndex((x) => x.id === item.id);
-    }
+    renderQueue();
 
     elNowTitle.textContent = state.current.title;
     elNowArtist.textContent = state.current.artist;
@@ -1133,6 +1144,7 @@
         patchCover(state.current.id, res.cover);
         syncFavBtn();
 
+        loadedTrack = track;
         audio.src = res.stream;
         audio.play().catch(() => {});
         document.body.classList.add('playing');
@@ -1175,19 +1187,41 @@
     });
   }
 
-  function nextSong(dir) {
+  function resetShuffle() {
+    shuffledOrder = state.queue.map((_, index) => index).filter((index) => index !== state.index);
+    for (let i = shuffledOrder.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffledOrder[i], shuffledOrder[j]] = [shuffledOrder[j], shuffledOrder[i]];
+    }
+    if (state.index >= 0) shuffledOrder.unshift(state.index);
+  }
+
+  function playQueued(index) {
+    state.index = index;
+    playItem(state.queue[index]);
+  }
+
+  function nextSong(dir, automatic = false) {
     const q = state.queue;
-    if (!q || q.length === 0) { toast('没有播放队列'); return; }
-    let i = state.index;
-    if (i < 0) i = 0;
-    i = (i + dir + q.length) % q.length;
-    state.index = i;
-    playItem(q[i], q);
+    if (!q.length) {
+      if (!automatic) toast('没有播放队列');
+      return;
+    }
+    const order = state.mode === 'shuffle' ? shuffledOrder : q.map((_, index) => index);
+    const position = order.indexOf(state.index) + dir;
+    if (state.mode !== 'repeatAll' && state.mode !== 'shuffle' &&
+        (position < 0 || position >= order.length)) {
+      if (!automatic) toast(dir > 0 ? '已经是最后一首' : '已经是第一首');
+      return;
+    }
+    if (automatic && state.mode === 'shuffle' && order.length === 1) return;
+    playQueued(order[(position + order.length) % order.length]);
   }
 
   $('#btnPlay').addEventListener('click', () => {
     if (!audio.src) {
-      if (state.queue.length) playItem(state.queue[0], state.queue);
+      const tracks = state.favs.length ? state.favs : lastSearchResults;
+      if (tracks.length) playItem(tracks[0], tracks);
       else toast('先搜一首歌吧');
       return;
     }
@@ -1201,11 +1235,34 @@
     nextSong(-1);
   });
 
-  $('#btnLoop').addEventListener('click', function () {
-    state.loop = !state.loop;
-    this.classList.toggle('on', state.loop);
-    audio.loop = state.loop;
-    toast(state.loop ? '单曲循环开' : '单曲循环关');
+  const playModes = {
+    sequential: '顺序播放',
+    repeatAll: '列表循环',
+    shuffle: '随机播放',
+    repeatOne: '单曲循环',
+  };
+  const modeButton = $('#btnLoop');
+  const modeKey = 'pipi.playMode';
+  try {
+    const saved = localStorage.getItem(modeKey);
+    if (Object.keys(playModes).includes(saved)) state.mode = saved;
+  } catch (_) {}
+
+  function paintMode() {
+    audio.loop = state.mode === 'repeatOne';
+    modeButton.textContent = playModes[state.mode];
+    modeButton.classList.toggle('on', state.mode !== 'sequential');
+    modeButton.setAttribute('aria-label', playModes[state.mode] + '，点击切换播放模式');
+  }
+
+  paintMode();
+  modeButton.addEventListener('click', () => {
+    const modes = Object.keys(playModes);
+    state.mode = modes[(modes.indexOf(state.mode) + 1) % modes.length];
+    try { localStorage.setItem(modeKey, state.mode); } catch (_) {}
+    if (state.mode === 'shuffle') resetShuffle();
+    paintMode();
+    renderQueue();
   });
 
   // ---------------------------------------------------------- 歌词
@@ -1316,18 +1373,16 @@
   });
 
   audio.addEventListener('ended', () => {
-    if (state.loop) return;
-    if (state.queue.length > 1) nextSong(1);
-    else {
-      document.body.classList.remove('playing', 'spinning');
-      elMiniEq.classList.remove('on');
-    }
+    document.body.classList.remove('playing', 'spinning');
+    elMiniEq.classList.remove('on');
+    if (!audio.loop) nextSong(1, true);
   });
 
   // 直链有时效，过期就重新取一次源并从原位置续上
   let repairing = 0;
   audio.addEventListener('error', () => {
-    if (!audio.src || !state.current) return;
+    const track = state.current;
+    if (!audio.src || !track || track.local || track !== loadedTrack) return;
     if (repairing >= 2) {
       elSideTip.textContent = '播放出错';
       document.body.classList.remove('playing', 'spinning');
@@ -1348,9 +1403,11 @@
       source: state.current.source,
     })
       .then((res) => {
+        if (state.current !== track) return;
         if (!res.ok) throw new Error(res.error || '重取失败');
         audio.src = res.stream;
         const resume = () => {
+          if (state.current !== track) return;
           try { audio.currentTime = pos; } catch (e) {}
           if (wasPlaying) audio.play().catch(() => {});
           elSideTip.textContent = wasPlaying ? '正在播放' : '已暂停';
@@ -1358,6 +1415,7 @@
         audio.addEventListener('loadedmetadata', resume, { once: true });
       })
       .catch((e) => {
+        if (state.current !== track) return;
         elSideTip.textContent = '播放出错';
         toast('播放失败：' + e.message, true);
       })
@@ -1376,6 +1434,11 @@
   const openPlayer = $('#openPlayer');
   const closePlayer = $('#closePlayer');
   const playerLyrics = $('#playerLyrics');
+  const playerQueue = $('#playerQueue');
+  const queueToggle = $('#queueToggle');
+  const queueTracks = $('#queueTracks');
+  const queueEmpty = $('#queueEmpty');
+  const playFavorites = $('#playFavorites');
 
   if (window.__PIPI_IOS__) {
     playerLyrics.appendChild(elLyricBody);
@@ -1386,12 +1449,53 @@
     playerLyrics.hidden = !expanded;
     lyricPreview.setAttribute('aria-expanded', String(expanded));
     if (expanded) {
+      setQueueVisible(false, false);
       state.lyricIdx = null;
       syncLyric(audio.currentTime);
     }
     if (focus) (expanded ? playerLyrics : lyricPreview.disabled ? closePlayer : lyricPreview).focus();
   }
 
+  function renderQueue() {
+    if (playerQueue.hidden) return;
+    const active = state.queue.length > 0;
+    const tracks = active ? state.queue : state.favs.length ? state.favs : lastSearchResults;
+    const order = active && state.mode === 'shuffle' ? shuffledOrder : tracks.map((_, index) => index);
+    const rows = document.createDocumentFragment();
+    order.forEach((index) => {
+      const track = tracks[index];
+      const row = document.createElement('li');
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = [track.title || track.raw, track.artist].filter(Boolean).join(' · ');
+      if (active && index === state.index) button.setAttribute('aria-current', 'true');
+      button.addEventListener('click', () => {
+        if (active) playQueued(index);
+        else playItem(track, tracks);
+        queueTracks.querySelector('[aria-current]')?.focus({ preventScroll: true });
+      });
+      row.appendChild(button);
+      rows.appendChild(row);
+    });
+    queueTracks.textContent = '';
+    queueTracks.appendChild(rows);
+    queueEmpty.hidden = order.length > 0;
+    playFavorites.disabled = !state.favs.length;
+  }
+
+  function setQueueVisible(expanded, focus = true) {
+    playerQueue.hidden = !expanded;
+    queueToggle.setAttribute('aria-expanded', String(expanded));
+    if (expanded) {
+      setFullLyrics(false, false);
+      renderQueue();
+      queueTracks.querySelector('[aria-current]')?.scrollIntoView({ block: 'nearest' });
+    }
+    if (focus) (expanded ? playerQueue : queueToggle).focus({ preventScroll: true });
+  }
+
+  queueToggle.addEventListener('click', () => setQueueVisible(playerQueue.hidden));
+  playFavorites.addEventListener('click', () => playItem(state.favs[0], state.favs));
   lyricPreview.addEventListener('click', () => setFullLyrics(true));
   playerLyrics.addEventListener('click', (e) => {
     if (!e.target.closest('.lyric-line')) setFullLyrics(false);
@@ -1400,7 +1504,11 @@
   function setPlayerExpanded(expanded) {
     document.body.classList.toggle('player-expanded', expanded);
     openPlayer.setAttribute('aria-expanded', String(expanded));
-    if (!expanded) setFullLyrics(false, false);
+    openPlayer.disabled = expanded;
+    if (!expanded) {
+      setFullLyrics(false, false);
+      setQueueVisible(false, false);
+    }
     (expanded ? closePlayer : openPlayer).focus();
   }
 
@@ -1408,8 +1516,9 @@
   closePlayer.addEventListener('click', () => setPlayerExpanded(false));
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && document.body.classList.contains('player-expanded')) {
-      if (playerLyrics.hidden) setPlayerExpanded(false);
-      else setFullLyrics(false);
+      if (!playerQueue.hidden) setQueueVisible(false);
+      else if (!playerLyrics.hidden) setFullLyrics(false);
+      else setPlayerExpanded(false);
     }
   });
 

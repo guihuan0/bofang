@@ -194,19 +194,27 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
       </button>
       <span>正在播放</span>
+      <button type="button" id="queueToggle" aria-controls="playerQueue" aria-expanded="false">播放列表</button>
     </div>
     <div class="now">
+      <section id="playerQueue" aria-labelledby="queueTitle" tabindex="-1" hidden>
+        <header>
+          <h2 id="queueTitle">播放列表</h2>
+          <button type="button" id="playFavorites">播放收藏</button>
+        </header>
+        <ol id="queueTracks"></ol>
+        <p id="queueEmpty">收藏或搜索歌曲后即可播放</p>
+      </section>
       <section id="playerLyrics" aria-label="同步歌词" tabindex="-1" hidden></section>
-      <div class="disc" id="disc">
-        <img id="nowCover" alt="">
-        <div class="disc-hole"></div>
-      </div>
-      <div class="now-meta">
-        <div class="now-title" id="nowTitle">未播放</div>
-        <div class="now-artist" id="nowArtist">选一首开始</div>
-      </div>
       <button type="button" id="openPlayer" aria-label="展开播放页" aria-controls="playbar" aria-expanded="false">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg>
+        <span class="disc" id="disc">
+          <img id="nowCover" alt="">
+          <span class="disc-hole"></span>
+        </span>
+        <span class="now-meta">
+          <span class="now-title" id="nowTitle">未播放</span>
+          <span class="now-artist" id="nowArtist">选一首开始</span>
+        </span>
       </button>
       <button class="fav-btn" id="favBtn" title="收藏 / 取消收藏">
         <svg viewBox="0 0 24 24"><path d="M12 20s-7-4.35-7-9.5A4.5 4.5 0 0 1 12 7a4.5 4.5 0 0 1 7 3.5C19 15.65 12 20 12 20z"/></svg>
@@ -229,9 +237,7 @@
         <button class="ctl sm" id="btnNext" title="下一首">
           <svg viewBox="0 0 24 24"><path d="M5 5l10 7-10 7zM18 5v14"/></svg>
         </button>
-        <button class="ctl sm" id="btnLoop" title="单曲循环">
-          <svg viewBox="0 0 24 24"><path d="M4 10V8a3 3 0 0 1 3-3h10M20 14v2a3 3 0 0 1-3 3H7"/><path d="M17 2l3 3-3 3M7 22l-3-3 3-3"/></svg>
-        </button>
+        <button type="button" class="ctl sm" id="btnLoop">顺序播放</button>
       </div>
       <div class="progress-row">
         <span class="t" id="tCur">0:00</span>
