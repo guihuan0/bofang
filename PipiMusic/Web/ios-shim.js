@@ -235,7 +235,7 @@
 
     // --- 播放 ---
     if (path === '/api/play') {
-      return call('play', body.id || '', body.source || 'vipp3').then(function (r) {
+      return call('play', body.id || '', body.source || 'vipp3', body.title || '', body.artist || '').then(function (r) {
         if (!r.ok) {
           return {
             ok: false, error: r.error || '这首歌暂时听不了',
@@ -250,7 +250,7 @@
           lkid: r.lkid || '',
           title: body.title || '',
           artist: body.artist || '',
-          source: body.source || 'vipp3',
+          source: r.source || body.source || 'vipp3',
           lrc: r.lrc || '',
           lines: r.lines || []
         };

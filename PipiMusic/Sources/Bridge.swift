@@ -76,12 +76,16 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             case "play":
                 let sid = argStr(args, 0)
                 let source = argStr(args, 1)
-                let client = ClientPool.shared.client(source)
-                let r = try client.playURL(id: sid)
+                let audio = try bestAudio(sid: sid, title: argStr(args, 2),
+                                          artist: argStr(args, 3), source: source)
+                let r = audio.result
                 var payload = r.dict
                 if r.ok {
-                    let lines = try client.lyric(lkid: r.lkid, inline: r.lrc)
+                    let client = ClientPool.shared.client(audio.source)
+                    let lines = (try? client.lyric(lkid: r.lkid, inline: r.lrc)) ?? []
                     payload["lines"] = lines.map { ["t": $0.t, "text": $0.text] }
+                    payload["source"] = audio.source
+                    payload["size"] = audio.size
                 }
                 reply(reqId, ok: true, payload)
 
@@ -230,28 +234,59 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         return s.isEmpty ? "未命名" : s
     }
 
-    /// HEAD 一下拿字节数，用来比音质
+    /// 请求首字节。部分 CDN 的 HEAD 不返回音频长度。
     private func remoteSize(_ urlString: String) -> Int {
         guard let u = URL(string: urlString) else { return 0 }
-        var req = URLRequest(url: u)
-        req.httpMethod = "HEAD"
+        var req = URLRequest(url: u, timeoutInterval: 5)
         req.setValue(PipiClient.USER_AGENT, forHTTPHeaderField: "User-Agent")
+        req.setValue("bytes=0-0", forHTTPHeaderField: "Range")
+        req.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
 
         var size = 0
         let sem = DispatchSemaphore(value: 0)
-        URLSession.shared.dataTask(with: req) { _, resp, _ in
-            if let h = resp as? HTTPURLResponse {
-                if h.expectedContentLength > 0 {
-                    size = Int(h.expectedContentLength)
-                } else if let cl = h.value(forHTTPHeaderField: "Content-Length"),
-                          let n = Int(cl) {
-                    size = n
-                }
+        let task = URLSession.shared.dataTask(with: req) { _, resp, _ in
+            defer { sem.signal() }
+            guard let h = resp as? HTTPURLResponse,
+                  let mime = h.mimeType?.lowercased(),
+                  mime.hasPrefix("audio/") || mime == "application/octet-stream" else { return }
+            if h.statusCode == 206,
+               let range = h.value(forHTTPHeaderField: "Content-Range"),
+               let total = range.split(separator: "/").last {
+                size = Int(total) ?? 0
+            } else if h.statusCode == 200, h.expectedContentLength > 0 {
+                size = Int(h.expectedContentLength)
             }
-            sem.signal()
-        }.resume()
-        _ = sem.wait(timeout: .now() + 20)
+        }
+        task.resume()
+        guard sem.wait(timeout: .now() + 6) == .success else {
+            task.cancel()
+            return 0
+        }
         return size
+    }
+
+    private func bestAudio(sid: String, title: String, artist: String, source: String) throws
+        -> (result: PlayResult, size: Int, source: String) {
+        let initial = try ClientPool.shared.client(source).playURL(id: sid)
+        var best = (result: initial, size: initial.ok ? remoteSize(initial.url) : 0, source: source)
+        let titleKey = title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let artistKey = artist.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !titleKey.isEmpty, !artistKey.isEmpty else { return best }
+
+        for candidate in ["33ve", "aac", "vipp3"] where candidate != source {
+            let client = ClientPool.shared.client(candidate)
+            guard let items = try? client.search("\(title) \(artist)", limit: 8),
+                  let match = items.first(where: {
+                      $0.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == titleKey &&
+                      $0.artist.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == artistKey
+                  }),
+                  let result = try? client.playURL(id: match.id), result.ok else { continue }
+            let size = remoteSize(result.url)
+            if !best.result.ok || size > best.size {
+                best = (result, size, candidate)
+            }
+        }
+        return best
     }
 
     // 下载任务状态（内存里，够前端轮询）
@@ -260,26 +295,8 @@ final class Bridge: NSObject, WKScriptMessageHandler {
 
     private func prepareDownload(sid: String, title: String,
                                  artist: String, source: String) throws -> [String: Any] {
-        let client = ClientPool.shared.client(source)
-        var best = try client.playURL(id: sid)
-        var bestSize = best.ok ? remoteSize(best.url) : 0
-        var bestSource = source
-
-        // 33ve 的接口稳定给 320k（~10MB），同曲在别的源只有 ~1.5MB，值得多问一句
-        if bestSize < 6 * 1024 * 1024, source != "33ve" {
-            let c33 = ClientPool.shared.client("33ve")
-            let kw = artist.isEmpty ? title : "\(title) \(artist)"
-            if let items = try? c33.search(kw, limit: 6),
-               let hit = pickBest(items, title: title, artist: artist),
-               let r = try? c33.playURL(id: hit.id), r.ok {
-                let sz = remoteSize(r.url)
-                if sz > bestSize {
-                    best = r
-                    bestSize = sz
-                    bestSource = "33ve"
-                }
-            }
-        }
+        let (best, bestSize, bestSource) = try bestAudio(sid: sid, title: title,
+                                                       artist: artist, source: source)
 
         guard best.ok else {
             return ["ok": false, "error": best.error]
@@ -287,7 +304,8 @@ final class Bridge: NSObject, WKScriptMessageHandler {
 
         var stem = artist.isEmpty ? title : "\(artist) - \(title)"
         if stem.trimmingCharacters(in: .whitespaces).isEmpty { stem = "未命名" }
-        let ext = best.url.lowercased().contains(".m4a") ? ".m4a" : ".mp3"
+        let pathExt = URL(string: best.url)?.pathExtension.lowercased() ?? ""
+        let ext = ["mp3", "m4a", "flac", "wav", "aac", "ogg"].contains(pathExt) ? ".\(pathExt)" : ".mp3"
 
         let tid = "\(Int(Date().timeIntervalSince1970 * 1000))"
         let saved = try beginDownload(taskId: tid, url: best.url, name: stem + ext)
