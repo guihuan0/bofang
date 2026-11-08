@@ -235,7 +235,8 @@
 
     // --- 播放 ---
     if (path === '/api/play') {
-      return call('play', body.id || '', body.source || 'vipp3', body.title || '', body.artist || '').then(function (r) {
+      return call('play', body.id || '', body.source || 'vipp3', body.title || '', body.artist || '',
+                  lsGet('playWorkers', 3)).then(function (r) {
         if (!r.ok) {
           return {
             ok: false, error: r.error || '这首歌暂时听不了',
@@ -258,7 +259,7 @@
     }
 
     if (path === '/api/lyric') {
-      return call('lyric', q.lkid || '', q.source || 'vipp3', '')
+      return call('lyric', body.lkid || q.lkid || '', body.source || q.source || 'vipp3', body.lrc || '')
         .then(function (r) { return { ok: true, lines: r.lines || [] }; });
     }
 
@@ -291,7 +292,7 @@
     // --- 下载 ---
     if (path === '/api/download') {
       return call('download', body.id || '', body.title || '',
-                  body.artist || '', body.source || 'vipp3');
+                  body.artist || '', body.source || 'vipp3', lsGet('downloadWorkers', 4));
     }
 
     if (path === '/api/download/status') {

@@ -9,7 +9,7 @@ final class Bridge: NSObject, WKScriptMessageHandler {
     weak var webView: WKWebView?
 
     private let queue = DispatchQueue(label: "pipi.bridge", qos: .userInitiated)
-    private var downloadTasks: [String: URLSessionDownloadTask] = [:]
+    private let mediaQueue = DispatchQueue(label: "pipi.media", qos: .userInitiated, attributes: .concurrent)
     private let lock = NSLock()
 
     // MARK: - 收消息
@@ -21,7 +21,8 @@ final class Bridge: NSObject, WKScriptMessageHandler {
               let cmd = body["cmd"] as? String else { return }
 
         let args = body["args"] as? [Any] ?? []
-        queue.async { [weak self] in
+        let target = ["play", "lyric", "lyricSearch", "download", "dlStatus"].contains(cmd) ? mediaQueue : queue
+        target.async { [weak self] in
             self?.dispatch(reqId: reqId, cmd: cmd, args: args)
         }
     }
@@ -76,17 +77,11 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             case "play":
                 let sid = argStr(args, 0)
                 let source = argStr(args, 1)
-                let audio = try bestAudio(sid: sid, title: argStr(args, 2),
-                                          artist: argStr(args, 3), source: source)
-                let r = audio.result
-                var payload = r.dict
-                if r.ok {
-                    let client = ClientPool.shared.client(audio.source)
-                    let lines = (try? client.lyric(lkid: r.lkid, inline: r.lrc)) ?? []
-                    payload["lines"] = lines.map { ["t": $0.t, "text": $0.text] }
-                    payload["source"] = audio.source
-                    payload["size"] = audio.size
-                }
+                let workers = workerCount(args, index: 4, fallback: 3, maximum: 3)
+                let audio = try resolvePlayback(sid: sid, title: argStr(args, 2),
+                                                artist: argStr(args, 3), source: source, workers: workers)
+                var payload = audio.result.dict
+                payload["source"] = audio.source
                 reply(reqId, ok: true, payload)
 
             case "lyric":
@@ -120,8 +115,9 @@ final class Bridge: NSObject, WKScriptMessageHandler {
                 let title = argStr(args, 1)
                 let artist = argStr(args, 2)
                 let source = argStr(args, 3)
+                let workers = workerCount(args, index: 4, fallback: 4, maximum: 8)
                 let started = try prepareDownload(sid: sid, title: title,
-                                                  artist: artist, source: source)
+                                                  artist: artist, source: source, workers: workers)
                 reply(reqId, ok: true, started)
 
             case "downloads":
@@ -234,150 +230,157 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         return s.isEmpty ? "未命名" : s
     }
 
-    /// 请求首字节。部分 CDN 的 HEAD 不返回音频长度。
-    private func remoteSize(_ urlString: String) -> Int {
-        guard let u = URL(string: urlString) else { return 0 }
-        var req = URLRequest(url: u, timeoutInterval: 5)
-        req.setValue(PipiClient.USER_AGENT, forHTTPHeaderField: "User-Agent")
-        req.setValue("bytes=0-0", forHTTPHeaderField: "Range")
-        req.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
-
-        var size = 0
-        let sem = DispatchSemaphore(value: 0)
-        let task = URLSession.shared.dataTask(with: req) { _, resp, _ in
-            defer { sem.signal() }
-            guard let h = resp as? HTTPURLResponse,
-                  let mime = h.mimeType?.lowercased(),
-                  mime.hasPrefix("audio/") || mime == "application/octet-stream" else { return }
-            if h.statusCode == 206,
-               let range = h.value(forHTTPHeaderField: "Content-Range"),
-               let total = range.split(separator: "/").last {
-                size = Int(total) ?? 0
-            } else if h.statusCode == 200, h.expectedContentLength > 0 {
-                size = Int(h.expectedContentLength)
-            }
-        }
-        task.resume()
-        guard sem.wait(timeout: .now() + 6) == .success else {
-            task.cancel()
-            return 0
-        }
-        return size
+    private func workerCount(_ args: [Any], index: Int, fallback: Int, maximum: Int) -> Int {
+        guard args.indices.contains(index), let n = args[index] as? NSNumber else { return fallback }
+        return min(maximum, max(1, n.intValue))
     }
 
-    private func bestAudio(sid: String, title: String, artist: String, source: String) throws
-        -> (result: PlayResult, size: Int, source: String) {
-        let initial = try ClientPool.shared.client(source).playURL(id: sid)
-        var best = (result: initial, size: initial.ok ? remoteSize(initial.url) : 0, source: source)
+    private func resolveAudio(sid: String, title: String, artist: String,
+                              source: String, candidate: String) throws -> PlayResult {
+        let client = ClientPool.shared.client(candidate)
+        if candidate == source, !sid.isEmpty { return try client.playURL(id: sid) }
         let titleKey = title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let artistKey = artist.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !titleKey.isEmpty, !artistKey.isEmpty else { return best }
+        guard !titleKey.isEmpty, !artistKey.isEmpty else {
+            throw PipiError.message("缺少歌名或歌手，无法匹配音源")
+        }
+        let songs = try client.search("\(title) \(artist)", limit: 8)
+        guard let match = songs.first(where: {
+            $0.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == titleKey &&
+            $0.artist.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == artistKey
+        }) else { throw PipiError.message("该音源没有找到同一首歌") }
+        return try client.playURL(id: match.id)
+    }
 
-        for candidate in ["33ve", "aac", "vipp3"] where candidate != source {
-            let client = ClientPool.shared.client(candidate)
-            guard let items = try? client.search("\(title) \(artist)", limit: 8),
-                  let match = items.first(where: {
-                      $0.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == titleKey &&
-                      $0.artist.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == artistKey
-                  }),
-                  let result = try? client.playURL(id: match.id), result.ok else { continue }
-            let size = remoteSize(result.url)
-            if !best.result.ok || size > best.size {
-                best = (result, size, candidate)
+    private func resolvePlayback(sid: String, title: String, artist: String, source: String,
+                                 workers: Int) throws -> (result: PlayResult, source: String) {
+        let source = SoundSource.find(source)?.id ?? "vipp3"
+        let candidates = ["33ve"] + (source == "33ve" ? [] : [source])
+            + SoundSource.all.map(\.id).filter { $0 != "33ve" && $0 != source }
+        if workers == 1 {
+            for candidate in candidates {
+                if let result = try? resolveAudio(sid: sid, title: title, artist: artist,
+                                                  source: source, candidate: candidate), result.ok {
+                    return (result, candidate)
+                }
             }
+            throw PipiError.message("没有找到可播放的音源")
         }
-        return best
+
+        let tasks = OperationQueue()
+        tasks.maxConcurrentOperationCount = workers
+        tasks.qualityOfService = .userInitiated
+        let condition = NSCondition()
+        var remaining = candidates.count
+        var preferredPending = true
+        var preferred: PlayResult?
+        var fallback: (result: PlayResult, source: String)?
+        var graceDeadline: Date?
+        let timeout = Date().addingTimeInterval(70)
+        let operations = candidates.map { candidate -> BlockOperation in
+            let operation = BlockOperation {
+                let result = try? self.resolveAudio(sid: sid, title: title, artist: artist,
+                                                    source: source, candidate: candidate)
+                condition.lock()
+                if candidate == "33ve" {
+                    preferredPending = false
+                    if let result = result, result.ok { preferred = result }
+                } else if let result = result, result.ok, fallback == nil {
+                    fallback = (result, candidate)
+                    graceDeadline = Date().addingTimeInterval(0.35)
+                }
+                remaining -= 1
+                condition.signal()
+                condition.unlock()
+            }
+            operation.queuePriority = candidate == "33ve" ? .veryHigh : candidate == source ? .high : .normal
+            return operation
+        }
+        tasks.addOperations(operations, waitUntilFinished: false)
+        defer { tasks.cancelAllOperations() }
+        condition.lock()
+        defer { condition.unlock() }
+        while preferred == nil, remaining > 0, fallback == nil || preferredPending {
+            let deadline = min(timeout, graceDeadline ?? timeout)
+            if !condition.wait(until: deadline) { break }
+        }
+        if let preferred = preferred { return (preferred, "33ve") }
+        if let fallback = fallback { return fallback }
+        throw PipiError.message("没有找到可播放的音源")
     }
 
-    // 下载任务状态（内存里，够前端轮询）
     private var dlJobs: [String: [String: Any]] = [:]
-    private var dlOrder: [String] = []
 
-    private func prepareDownload(sid: String, title: String,
-                                 artist: String, source: String) throws -> [String: Any] {
-        let (best, bestSize, bestSource) = try bestAudio(sid: sid, title: title,
-                                                       artist: artist, source: source)
-
-        guard best.ok else {
-            return ["ok": false, "error": best.error]
+    private func prepareDownload(sid: String, title: String, artist: String,
+                                 source: String, workers: Int) throws -> [String: Any] {
+        let audio: PlayResult
+        do {
+            audio = try resolveAudio(sid: sid, title: title, artist: artist,
+                                     source: source, candidate: "33ve")
+        } catch {
+            throw PipiError.message("33ve 下载失败：\(error.localizedDescription)")
         }
+        guard audio.ok else { return ["ok": false, "error": "33ve 下载失败：\(audio.error)"] }
 
-        var stem = artist.isEmpty ? title : "\(artist) - \(title)"
-        if stem.trimmingCharacters(in: .whitespaces).isEmpty { stem = "未命名" }
-        let pathExt = URL(string: best.url)?.pathExtension.lowercased() ?? ""
-        let ext = ["mp3", "m4a", "flac", "wav", "aac", "ogg"].contains(pathExt) ? ".\(pathExt)" : ".mp3"
-
-        let tid = "\(Int(Date().timeIntervalSince1970 * 1000))"
-        let saved = try beginDownload(taskId: tid, url: best.url, name: stem + ext)
-
-        return [
-            "ok": true,
-            "task": tid,
-            "size": bestSize,
-            "source": bestSource,
-            "name": saved,
-            "candidates": [["source": bestSource, "size": bestSize]],
-        ]
+        let stem = artist.isEmpty ? title : "\(artist) - \(title)"
+        let pathExt = URL(string: audio.url)?.pathExtension.lowercased() ?? ""
+        let ext = ["mp3", "m4a", "flac", "wav", "aac", "ogg"].contains(pathExt) ? pathExt : "mp3"
+        let taskId = UUID().uuidString
+        let saved = try beginDownload(taskId: taskId, url: audio.url,
+                                      name: safeName(stem) + "." + ext, workers: workers)
+        return ["ok": true, "task": taskId, "source": "33ve", "name": saved]
     }
 
-    private func beginDownload(taskId: String, url: String, name: String) throws -> String {
-        guard let u = URL(string: url) else { throw PipiError.message("下载地址非法") }
-
-        var fname = safeName(name)
-        if !fname.contains(".") { fname += ".mp3" }
+    private func beginDownload(taskId: String, url: String, name: String, workers: Int) throws -> String {
+        guard let url = URL(string: url), ["http", "https"].contains(url.scheme ?? "") else {
+            throw PipiError.message("下载地址非法")
+        }
 
         let dir = downloadsDir
-        var dest = dir.appendingPathComponent(fname)
+        lock.lock()
+        let reserved = Set(dlJobs.values.compactMap { job -> String? in
+            guard job["status"] as? String == "running" else { return nil }
+            return job["name"] as? String
+        })
+        var file = dir.appendingPathComponent(name)
         var i = 1
-        while FileManager.default.fileExists(atPath: dest.path) {
-            let base = (fname as NSString).deletingPathExtension
-            let ext = (fname as NSString).pathExtension
-            dest = dir.appendingPathComponent("\(base) (\(i)).\(ext)")
+        while reserved.contains(file.lastPathComponent) || FileManager.default.fileExists(atPath: file.path) {
+            let base = (name as NSString).deletingPathExtension
+            let ext = (name as NSString).pathExtension
+            file = dir.appendingPathComponent("\(base) (\(i)).\(ext)")
             i += 1
         }
-
-        lock.lock()
+        let dest = file
         dlJobs[taskId] = ["status": "running", "done": 0, "total": 0, "percent": 0.0,
                           "name": dest.lastPathComponent, "error": ""]
-        dlOrder.insert(taskId, at: 0)
         lock.unlock()
 
-        var req = URLRequest(url: u)
-        req.setValue(PipiClient.USER_AGENT, forHTTPHeaderField: "User-Agent")
-        // 不要加 Referer：酷我 CDN 带了就 403
-
-        let task = URLSession.shared.downloadTask(with: req) { [weak self] tmp, resp, err in
+        var request = URLRequest(url: url, timeoutInterval: 20)
+        request.setValue(PipiClient.USER_AGENT, forHTTPHeaderField: "User-Agent")
+        request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
+        ParallelDownload.start(request, workers: workers, progress: { [weak self] done, total in
             guard let self = self else { return }
             self.lock.lock()
             defer { self.lock.unlock() }
-
-            if let err = err {
-                self.dlJobs[taskId] = ["status": "error", "error": err.localizedDescription,
-                                       "name": dest.lastPathComponent,
-                                       "done": 0, "total": 0, "percent": 0.0]
-                return
-            }
-            guard let tmp = tmp else {
-                self.dlJobs[taskId] = ["status": "error", "error": "临时文件丢失",
-                                       "name": dest.lastPathComponent,
-                                       "done": 0, "total": 0, "percent": 0.0]
-                return
-            }
+            self.dlJobs[taskId]?["done"] = done
+            self.dlJobs[taskId]?["total"] = total
+            self.dlJobs[taskId]?["percent"] = total > 0 ? Double(done) / Double(total) * 100 : 0
+        }, completion: { [weak self] result in
+            guard let self = self else { return }
+            self.lock.lock()
+            defer { self.lock.unlock() }
             do {
-                try? FileManager.default.removeItem(at: dest)
+                let tmp = try result.get()
+                let size = try tmp.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+                guard size > 0 else { throw PipiError.message("下载文件为空") }
                 try FileManager.default.moveItem(at: tmp, to: dest)
-                let attrs = try? FileManager.default.attributesOfItem(atPath: dest.path)
-                let size = (attrs?[.size] as? NSNumber)?.intValue ?? 0
                 self.dlJobs[taskId] = ["status": "done", "done": size, "total": size,
-                                       "percent": 100.0, "name": dest.lastPathComponent,
-                                       "error": ""]
+                                       "percent": 100.0, "name": dest.lastPathComponent, "error": ""]
             } catch {
-                self.dlJobs[taskId] = ["status": "error", "error": "保存失败",
-                                       "name": dest.lastPathComponent,
-                                       "done": 0, "total": 0, "percent": 0.0]
+                self.dlJobs[taskId] = ["status": "error", "error": error.localizedDescription,
+                                       "name": dest.lastPathComponent, "done": 0, "total": 0, "percent": 0.0]
             }
-        }
-        task.resume()
+        })
         return dest.lastPathComponent
     }
 

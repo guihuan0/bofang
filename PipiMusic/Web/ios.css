@@ -234,6 +234,20 @@ body.ios input, body.ios textarea {
 
 .player-heading, #openPlayer { display: none; }
 
+.media-settings { color: var(--dim); font-size: 13px; }
+.media-settings summary { min-height: 34px; padding: 8px 0; cursor: pointer; }
+.media-settings-options { display: flex; flex-wrap: wrap; gap: 12px; }
+.media-settings-options label { display: flex; align-items: center; gap: 8px; }
+.media-settings-options select {
+  min-height: 44px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #151b27;
+  color: var(--text);
+  font-size: 16px;
+}
+
 #seekBar { touch-action: none; }
 
 body.ios .app {

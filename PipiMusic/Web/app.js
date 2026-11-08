@@ -165,8 +165,8 @@
       return;
     }
     dlActive[key] = true;
-    elSideTip.textContent = '正在优选最高音质…';
-    toast('正在比较各音源音质…');
+    elSideTip.textContent = '正在从 33ve 获取下载链接…';
+    toast('正在从 33ve 获取下载链接…');
 
     postJSON('/api/download', {
       id: item.id,
@@ -181,9 +181,7 @@
           elSideTip.textContent = '下载失败';
           return;
         }
-        const cand = res.candidates || [];
-        const best = cand[0];
-        toast('最高音质 ' + fmtMB(res.size) + '（' + (best ? best.source : res.source) + '）');
+        toast('已开始从 33ve 下载');
         pollDownload(res.task, key);
       })
       .catch((e) => {
@@ -217,6 +215,7 @@
           if (j.status === 'done') {
             elSideTip.textContent = '已下载';
             toast('已保存：' + j.name);
+            loadDownloads();
           } else if (j.status === 'cancelled') {
             toast('已取消');
           } else {
@@ -279,7 +278,7 @@
       const e = document.createElement('div');
       e.className = 'pl-empty';
       e.innerHTML = '<b>还没有下载过歌曲</b>' +
-        '在搜索结果或播放条上点 ↓ 就能下载，会自动挑最高音质';
+        '在搜索结果或播放条上点 ↓，即可从 33ve 下载';
       elDlList.appendChild(e);
       return;
     }
@@ -530,7 +529,7 @@
 
     const down = document.createElement('button');
     down.className = 'icon-btn dl';
-    down.title = '下载（自动挑最高音质）';
+    down.title = '从 33ve 下载';
     down.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg>';
     down.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1152,9 +1151,16 @@
         elMiniEq.classList.add('on');
         elSideTip.textContent = '正在播放';
 
-        state.lyrics = res.lines || [];
-        renderLyrics();
         paintPlaying();
+        postJSON('/api/lyric', { lkid: res.lkid, source: res.source, lrc: res.lrc })
+          .then((lyrics) => {
+            if (state.current !== track) return;
+            state.lyrics = lyrics.lines || [];
+            renderLyrics();
+          })
+          .catch(() => {
+            if (state.current === track) showLyricsMessage('歌词加载失败');
+          });
       })
       .catch((e) => {
         if (state.current !== track) return;
@@ -1613,6 +1619,19 @@
 
   // ---------------------------------------------------------- 启动
   elNowCover.style.display = 'none';
+  if (window.__PIPI_IOS__) {
+    $('#mediaSettings').hidden = false;
+    [['playWorkers', '3'], ['downloadWorkers', '4']].forEach(([id, fallback]) => {
+      const select = $('#' + id);
+      const key = 'pipi_' + id;
+      let value = fallback;
+      try { value = localStorage.getItem(key) || fallback; } catch (_) {}
+      select.value = Array.from(select.options).some((option) => option.value === value) ? value : fallback;
+      select.addEventListener('change', () => {
+        try { localStorage.setItem(key, select.value); } catch (_) {}
+      });
+    });
+  }
   loadSources();
   loadFavs();
   loadPlaylists();

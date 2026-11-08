@@ -73,6 +73,22 @@
         </button>
       </div>
       <div class="sources" id="sourceBar"></div>
+      <details class="media-settings" id="mediaSettings" hidden>
+        <summary>播放与下载设置</summary>
+        <div class="media-settings-options">
+          <label>播放并发
+            <select id="playWorkers">
+              <option value="1">1 路</option><option value="2">2 路</option><option value="3">3 路</option>
+            </select>
+          </label>
+          <label>下载并发
+            <select id="downloadWorkers">
+              <option value="1">1 路</option><option value="2">2 路</option><option value="3">3 路</option><option value="4">4 路</option>
+              <option value="5">5 路</option><option value="6">6 路</option><option value="7">7 路</option><option value="8">8 路</option>
+            </select>
+          </label>
+        </div>
+      </details>
     </header>
 
     <!-- 搜索视图 -->
@@ -251,7 +267,7 @@
     </div>
 
     <div class="right">
-      <button class="mini" id="dlBtn" title="下载（自动挑最高音质）">
+      <button class="mini" id="dlBtn" title="从 33ve 下载">
         <svg viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg>
       </button>
       <button class="mini" id="btnMute" title="静音">
