@@ -258,6 +258,10 @@
       });
     }
 
+    if (path === '/api/cover') {
+      return call('cover', q.id || '', q.source || 'vipp3');
+    }
+
     if (path === '/api/lyric') {
       return call('lyric', body.lkid || q.lkid || '', body.source || q.source || 'vipp3', body.lrc || '')
         .then(function (r) { return { ok: true, lines: r.lines || [] }; });

@@ -818,3 +818,29 @@ body.ios .bar-knob { box-shadow: 0 0 0 3px var(--line-2); }
   body.ios.player-expanded .playbar .right { justify-self: center; }
   body.ios.player-expanded .disc { width: min(100%, 32vh); }
 }
+/* Larger transport controls without narrowing the song title column. */
+body.ios .song .act .icon-btn svg { width: 21px; height: 21px; }
+body.ios .song .act .icon-btn.fav,
+body.ios .song .act .icon-btn:not(.fav) { color: var(--dim); }
+body.ios .song .act .icon-btn.fav.on { color: var(--pink); }
+body.ios .playbar .fav-btn svg { width: 24px; height: 24px; }
+body.ios.player-expanded .playbar .controls { gap: clamp(5px, 2vw, 12px); }
+body.ios.player-expanded #btnPrev,
+body.ios.player-expanded #btnNext,
+body.ios.player-expanded .right .mini {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: var(--panel-2);
+  color: var(--text);
+}
+body.ios.player-expanded #btnPrev svg,
+body.ios.player-expanded #btnNext svg,
+body.ios.player-expanded .right .mini svg { width: 24px; height: 24px; }
+body.ios.player-expanded #btnPlay svg { width: 24px; height: 24px; }
+body.ios.player-expanded .fav-btn {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: var(--panel-2);
+}

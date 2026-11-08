@@ -21,7 +21,7 @@ final class Bridge: NSObject, WKScriptMessageHandler {
               let cmd = body["cmd"] as? String else { return }
 
         let args = body["args"] as? [Any] ?? []
-        let target = ["play", "lyric", "lyricSearch", "download", "dlStatus"].contains(cmd) ? mediaQueue : queue
+        let target = ["play", "cover", "lyric", "lyricSearch", "download", "dlStatus"].contains(cmd) ? mediaQueue : queue
         target.async { [weak self] in
             self?.dispatch(reqId: reqId, cmd: cmd, args: args)
         }
@@ -84,6 +84,10 @@ final class Bridge: NSObject, WKScriptMessageHandler {
                 payload["source"] = audio.source
                 reply(reqId, ok: true, payload)
 
+            case "cover":
+                let result = try ClientPool.shared.client(argStr(args, 1)).playURL(id: argStr(args, 0))
+                reply(reqId, ok: true, ["cover": result.cover])
+
             case "lyric":
                 let lkid = argStr(args, 0)
                 let source = argStr(args, 1)
@@ -115,7 +119,7 @@ final class Bridge: NSObject, WKScriptMessageHandler {
                 let title = argStr(args, 1)
                 let artist = argStr(args, 2)
                 let source = argStr(args, 3)
-                let workers = workerCount(args, index: 4, fallback: 4, maximum: 8)
+                let workers = workerCount(args, index: 4, fallback: 4, maximum: 16)
                 let started = try prepareDownload(sid: sid, title: title,
                                                   artist: artist, source: source, workers: workers)
                 reply(reqId, ok: true, started)

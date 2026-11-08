@@ -484,6 +484,7 @@
     const row = document.createElement('div');
     row.className = 'song';
     row.dataset.id = item.id;
+    row.dataset.source = item.source || currentSource();
     row.dataset.key = favKey(item);
     row.style.animationDelay = Math.min(idx * 12, 260) + 'ms';
 
@@ -508,6 +509,7 @@
       cov = placeholderCover();
     }
     row.appendChild(cov);
+    if (!item.cover && item.id && coverObserver) coverObserver.observe(row);
 
     // 文本
     const meta = document.createElement('div');
@@ -1149,7 +1151,7 @@
         state.current.lkid = res.lkid || state.current.lkid;
 
         // 回写队列里的封面（让列表也显示图）
-        patchCover(state.current.id, res.cover);
+        patchCover(track.id, track.source, res.cover);
         syncFavBtn();
 
         loadedTrack = track;
@@ -1179,17 +1181,64 @@
       });
   }
 
-  function patchCover(id, cover) {
+  const coverCache = new Map();
+  const coverPending = new Map();
+  let coverRequests = 0;
+  const coverObserver = window.__PIPI_IOS__ && window.IntersectionObserver ? new IntersectionObserver((entries) => {
+    entries.forEach(({target, isIntersecting}) => {
+      const {id, source} = target.dataset;
+      const key = JSON.stringify([source, id]);
+      if (isIntersecting) {
+        if (coverCache.has(key)) {
+          coverObserver.unobserve(target);
+          patchCover(id, source, coverCache.get(key));
+        } else if (!coverPending.has(key)) {
+          coverPending.set(key, target);
+        }
+      } else if (coverPending.get(key) === target && !target.dataset.coverLoading) {
+        coverPending.delete(key);
+      }
+    });
+    loadVisibleCovers();
+  }, {rootMargin: '120px'}) : null;
+
+  function loadVisibleCovers() {
+    for (const [key, row] of coverPending) {
+      if (coverRequests >= 2) return;
+      if (row.dataset.coverLoading) continue;
+      if (!row.isConnected) { coverPending.delete(key); continue; }
+      const {id, source} = row.dataset;
+      row.dataset.coverLoading = 'true';
+      coverObserver.unobserve(row);
+      coverRequests++;
+      api('/api/cover?id=' + encodeURIComponent(id) + '&source=' + encodeURIComponent(source))
+        .then((result) => {
+          if (coverCache.size >= 300) coverCache.delete(coverCache.keys().next().value);
+          coverCache.set(key, result.cover || '');
+          patchCover(id, source, result.cover);
+        })
+        .catch(() => {})
+        .finally(() => {
+          coverRequests--;
+          coverPending.delete(key);
+          loadVisibleCovers();
+        });
+    }
+  }
+
+  function patchCover(id, source, cover) {
     if (!cover) return;
     // state.queue
-    state.queue.forEach((x) => { if (x.id === id) x.cover = cover; });
-    if (state.current && state.current.id === id) state.current.cover = cover;
+    state.queue.forEach((x) => { if (x.id === id && (x.source || source) === source) x.cover = cover; });
     // 视图里的行
     $$('.song[data-id="' + CSS.escape(id) + '"]').forEach((row) => {
-      const first = row.children[1];
+      if (row.dataset.source !== source) return;
+      const first = row.querySelector('.cov');
       if (first && first.tagName !== 'IMG') {
         const img = document.createElement('img');
         img.className = 'cov';
+        img.alt = '';
+        img.loading = 'lazy';
         img.src = coverURL(cover);
         img.onerror = function () {
           const ph = placeholderCover();
@@ -1359,6 +1408,38 @@
   });
 
   // ---------------------------------------------------------- 音频事件
+  const mediaSession = navigator.mediaSession;
+  if (mediaSession) {
+    const actions = {
+      play: () => audio.play().catch(() => {}),
+      pause: () => audio.pause(),
+      previoustrack: () => $('#btnPrev').click(),
+      nexttrack: () => $('#btnNext').click(),
+      seekto: ({seekTime}) => {
+        if (Number.isFinite(seekTime)) audio.currentTime = seekTime;
+      },
+    };
+    Object.entries(actions).forEach(([action, handler]) => {
+      try { mediaSession.setActionHandler(action, handler); } catch (_) {}
+    });
+  }
+
+  function updateSystemPlayback(playing) {
+    if (!mediaSession) return;
+    try {
+      mediaSession.playbackState = playing ? 'playing' : 'paused';
+      if (playing && state.current && window.MediaMetadata) {
+        const track = state.current;
+        const artwork = new URL(track.cover || 'AppIcon1024.png', location.href).href;
+        mediaSession.metadata = new MediaMetadata({
+          title: track.title,
+          artist: track.artist,
+          artwork: [{ src: artwork }],
+        });
+      }
+    } catch (_) {}
+  }
+
   audio.addEventListener('timeupdate', () => {
     const d = audio.duration || 0;
     const c = audio.currentTime || 0;
@@ -1376,12 +1457,14 @@
   });
 
   audio.addEventListener('play', () => {
+    updateSystemPlayback(true);
     document.body.classList.add('playing', 'spinning');
     elMiniEq.classList.add('on');
     elSideTip.textContent = '正在播放';
   });
 
   audio.addEventListener('pause', () => {
+    updateSystemPlayback(false);
     document.body.classList.remove('playing');
     document.body.classList.remove('spinning');
     elMiniEq.classList.remove('on');
@@ -1389,6 +1472,7 @@
   });
 
   audio.addEventListener('ended', () => {
+    updateSystemPlayback(false);
     document.body.classList.remove('playing', 'spinning');
     elMiniEq.classList.remove('on');
     if (!audio.loop) nextSong(1, true);
