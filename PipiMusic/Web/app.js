@@ -1840,52 +1840,103 @@
     return destination;
   }
 
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
   function beginQueueDrag(event, row, tracks, order) {
-    if (!event.isPrimary || event.button !== 0) return;
+    if (!event.isPrimary || event.button !== 0 || queueTracks.classList.contains('queue-sorting')) return;
     event.preventDefault();
-    const handle = event.currentTarget;
     const pointer = event.pointerId;
     const from = Number(row.dataset.queueIndex);
-    let target = row;
+    const rect = row.getBoundingClientRect();
+    const offset = event.clientY - rect.top;
+    const initialNext = row.nextElementSibling;
+    const placeholder = document.createElement('li');
+    placeholder.className = 'queue-placeholder';
+    placeholder.style.height = rect.height + 'px';
+    placeholder.setAttribute('aria-hidden', 'true');
+    const floating = row.cloneNode(true);
+    floating.classList.add('queue-floating');
+    floating.setAttribute('aria-hidden', 'true');
+    floating.querySelectorAll('button').forEach(button => { button.tabIndex = -1; });
+    Object.assign(floating.style, {left: rect.left + 'px', top: rect.top + 'px', width: rect.width + 'px'});
+    const palette = getComputedStyle(queueTracks);
+    ['--panel-2', '--text', '--dim'].forEach((name) => floating.style.setProperty(name, palette.getPropertyValue(name)));
+    document.body.appendChild(floating);
+    row.replaceWith(placeholder);
+    queueTracks.classList.add('queue-sorting');
+    queueTracks.setPointerCapture(pointer);
+    const animations = new Map();
     let y = event.clientY;
     let frame;
-    handle.setPointerCapture(pointer);
-    row.classList.add('queue-dragging');
+    let lastTime = 0;
     const move = (e) => { if (e.pointerId === pointer) y = e.clientY; };
-    function update() {
-      if (!row.isConnected || playerQueue.hidden) {
-        finish({ pointerId: pointer, type: 'pointercancel' });
+
+    function shift(neighbor, upward) {
+      const before = neighbor.getBoundingClientRect().top;
+      animations.get(neighbor)?.cancel();
+      if (upward) queueTracks.insertBefore(placeholder, neighbor);
+      else queueTracks.insertBefore(neighbor, placeholder);
+      const delta = before - neighbor.getBoundingClientRect().top;
+      if (delta && !reducedMotion.matches && neighbor.animate) {
+        animations.set(neighbor, neighbor.animate(
+          [{transform: 'translateY(' + delta + 'px)'}, {transform: 'translateY(0)'}],
+          {duration: 165, easing: 'cubic-bezier(.2,.75,.25,1)'}));
+      }
+    }
+
+    function update(time) {
+      if (!placeholder.isConnected || playerQueue.hidden) {
+        finish({pointerId: pointer, type: 'pointercancel'});
         return;
       }
       const bounds = queueTracks.getBoundingClientRect();
-      if (y < bounds.top + 24) queueTracks.scrollTop -= 8;
-      else if (y > bounds.bottom - 24) queueTracks.scrollTop += 8;
-      const hit = document.elementFromPoint(bounds.left + bounds.width / 2,
-        Math.max(bounds.top + 1, Math.min(y, bounds.bottom - 1)))?.closest('[data-queue-index]');
-      if (hit && queueTracks.contains(hit) && target !== hit) {
-        target.classList.remove('queue-drop-target');
-        target = hit;
-        if (target !== row) target.classList.add('queue-drop-target');
+      const elapsed = lastTime ? Math.min(time - lastTime, 32) : 16;
+      lastTime = time;
+      const edge = 38;
+      if (y < bounds.top + edge) queueTracks.scrollTop -= Math.min(1, (bounds.top + edge - y) / edge) * elapsed * .55;
+      else if (y > bounds.bottom - edge) queueTracks.scrollTop += Math.min(1, (y - bounds.bottom + edge) / edge) * elapsed * .55;
+      floating.style.transform = 'translateY(' + (y - offset - rect.top) + 'px)';
+      const center = y - offset + rect.height / 2 - bounds.top + queueTracks.scrollTop;
+      let neighbor = placeholder.previousElementSibling;
+      while (neighbor && center < neighbor.offsetTop + neighbor.offsetHeight / 2) {
+        shift(neighbor, true);
+        neighbor = placeholder.previousElementSibling;
+      }
+      neighbor = placeholder.nextElementSibling;
+      while (neighbor && center > neighbor.offsetTop + neighbor.offsetHeight / 2) {
+        shift(neighbor, false);
+        neighbor = placeholder.nextElementSibling;
       }
       frame = requestAnimationFrame(update);
     }
+
     function finish(e) {
       if (e.pointerId !== pointer) return;
       cancelAnimationFrame(frame);
-      handle.removeEventListener('pointermove', move);
-      handle.removeEventListener('pointerup', finish);
-      handle.removeEventListener('pointercancel', finish);
-      handle.removeEventListener('lostpointercapture', finish);
-      row.classList.remove('queue-dragging');
-      target.classList.remove('queue-drop-target');
-      if (e.type === 'pointerup' && target !== row && row.isConnected) {
-        moveQueueTrack(tracks, order, from, Number(target.dataset.queueIndex));
+      queueTracks.removeEventListener('pointermove', move);
+      queueTracks.removeEventListener('pointerup', finish);
+      queueTracks.removeEventListener('pointercancel', finish);
+      queueTracks.removeEventListener('lostpointercapture', finish);
+      if (queueTracks.hasPointerCapture(pointer)) queueTracks.releasePointerCapture(pointer);
+      queueTracks.classList.remove('queue-sorting');
+      animations.forEach(animation => animation.cancel());
+      floating.remove();
+      if (!placeholder.isConnected) return;
+      const destination = Array.from(queueTracks.children).indexOf(placeholder);
+      if (e.type === 'pointerup' && destination !== order.indexOf(from)) {
+        const scroll = queueTracks.scrollTop;
+        moveQueueTrack(tracks, order, from, order[destination]);
+        queueTracks.scrollTop = scroll;
+      } else {
+        placeholder.remove();
+        queueTracks.insertBefore(row, initialNext?.parentNode === queueTracks ? initialNext : null);
       }
     }
-    handle.addEventListener('pointermove', move);
-    handle.addEventListener('pointerup', finish);
-    handle.addEventListener('pointercancel', finish);
-    handle.addEventListener('lostpointercapture', finish);
+
+    queueTracks.addEventListener('pointermove', move);
+    queueTracks.addEventListener('pointerup', finish);
+    queueTracks.addEventListener('pointercancel', finish);
+    queueTracks.addEventListener('lostpointercapture', finish);
     frame = requestAnimationFrame(update);
   }
 
@@ -1907,7 +1958,8 @@
     if (!e.target.closest('.lyric-line')) setFullLyrics(false);
   });
 
-  function setPlayerExpanded(expanded) {
+  let playerTransition = null;
+  function applyPlayerExpanded(expanded) {
     document.body.classList.toggle('player-expanded', expanded);
     openPlayer.setAttribute('aria-expanded', String(expanded));
     openPlayer.disabled = expanded;
@@ -1916,6 +1968,28 @@
       setQueueVisible(false, false);
     }
     (expanded ? closePlayer : openPlayer).focus();
+  }
+
+  function setPlayerExpanded(expanded) {
+    playerTransition?.cancel();
+    playerTransition = null;
+    if (reducedMotion.matches || !immersive.animate) {
+      applyPlayerExpanded(expanded);
+      return;
+    }
+    const resting = { transform: 'translateY(0) scale(1)', opacity: 1 };
+    const compact = { transform: 'translateY(18px) scale(.97)', opacity: .65 };
+    if (expanded) applyPlayerExpanded(true);
+    const animation = immersive.animate(expanded ? [compact, resting] : [resting, compact], {
+      duration: expanded ? 235 : 175, easing: 'cubic-bezier(.2,.75,.25,1)', fill: 'both',
+    });
+    playerTransition = animation;
+    animation.onfinish = () => {
+      if (playerTransition !== animation) return;
+      if (!expanded) applyPlayerExpanded(false);
+      animation.cancel();
+      playerTransition = null;
+    };
   }
 
   openPlayer.addEventListener('click', () => setPlayerExpanded(true));
