@@ -19,9 +19,9 @@ final class WebController: UIViewController, WKNavigationDelegate, WKUIDelegate 
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        NotificationCenter.default.addObserver(self, selector: #selector(publishNowPlaying),
-                                               name: UIApplication.didEnterBackgroundNotification,
-                                               object: nil)
+        let appearance = UserDefaults.standard.string(forKey: "pipi.appearance") ?? "system"
+        applyAppearance(appearance)
+        bridge.onAppearance = { [weak self] mode in self?.applyAppearance(mode) }
         view.backgroundColor = UIColor { traits in
             if traits.userInterfaceStyle == .dark {
                 return UIColor(red: 0.082, green: 0.071, blue: 0.063, alpha: 1)
@@ -36,11 +36,9 @@ final class WebController: UIViewController, WKNavigationDelegate, WKUIDelegate 
 
         let ucc = WKUserContentController()
         ucc.add(bridge, name: Bridge.name)
-        if let icon = Bridge.nowPlayingIconURL, let data = try? Data(contentsOf: icon) {
-            let artwork = "data:image/png;base64,\(data.base64EncodedString())"
-            ucc.addUserScript(WKUserScript(source: "window.__pipiSystemArtwork = '\(artwork)';",
-                                          injectionTime: .atDocumentStart, forMainFrameOnly: true))
-        }
+        let initialMode = ["light", "dark"].contains(appearance) ? appearance : "system"
+        ucc.addUserScript(WKUserScript(source: "window.__pipiNativePlayback = true; window.__pipiAppearance = '\(initialMode)';",
+                                      injectionTime: .atDocumentStart, forMainFrameOnly: true))
         config.userContentController = ucc
 
         // 关掉长按选择和弹出菜单，像个原生 app
@@ -81,8 +79,12 @@ final class WebController: UIViewController, WKNavigationDelegate, WKUIDelegate 
         loadUI()
     }
 
-    @objc private func publishNowPlaying() {
-        bridge.publishActiveNowPlaying()
+    private func applyAppearance(_ mode: String) {
+        UserDefaults.standard.set(mode, forKey: "pipi.appearance")
+        let style: UIUserInterfaceStyle = mode == "dark" ? .dark : mode == "light" ? .light : .unspecified
+        overrideUserInterfaceStyle = style
+        webView?.overrideUserInterfaceStyle = style
+        setNeedsStatusBarAppearanceUpdate()
     }
 
     private func loadUI() {

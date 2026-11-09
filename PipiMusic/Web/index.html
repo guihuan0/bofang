@@ -83,9 +83,16 @@
           <span>设置</span>
         </summary>
         <div class="media-settings-options">
-          <label>播放取源并发
+          <label>外观
+            <select id="appearanceMode">
+              <option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option>
+            </select>
+          </label>
+          <label>播放分段并发
             <select id="playWorkers">
               <option value="1">1 路</option><option value="2">2 路</option><option value="3">3 路</option>
+              <option value="4">4 路</option><option value="6">6 路</option><option value="8">8 路</option>
+              <option value="12">12 路</option><option value="16">16 路</option>
             </select>
           </label>
           <label>下载并发

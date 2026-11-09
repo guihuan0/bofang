@@ -235,8 +235,7 @@
 
     // --- 播放 ---
     if (path === '/api/play') {
-      return call('play', body.id || '', body.source || 'vipp3', body.title || '', body.artist || '',
-                  lsGet('playWorkers', 3)).then(function (r) {
+      return call('play', body.id || '', body.source || 'vipp3', body.title || '', body.artist || '').then(function (r) {
         if (!r.ok) {
           return {
             ok: false, error: r.error || '这首歌暂时听不了',

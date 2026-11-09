@@ -9,7 +9,7 @@
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => Array.prototype.slice.call(document.querySelectorAll(s));
 
-  const audio       = $('#audio');
+  const audio       = window.__pipiNativePlayback ? makeNativeAudio() : $('#audio');
   const elSearch    = $('#searchInput');
   const elSearchBtn = $('#searchBtn');
   const elHero      = $('#hero');
@@ -62,6 +62,62 @@
   let lastSearchResults = [];
   let shuffledOrder = [];
   let loadedTrack = null;
+
+  function makeNativeAudio() {
+    const events = new EventTarget();
+    const call = (command, value) => window.__pipiCall(command, value);
+    const send = (command, value) => call(command, value).catch(() => {});
+    let source = '';
+    let token = 0;
+    let position = 0;
+    let duration = NaN;
+    let paused = true;
+    let loop = false;
+    let volume = 1;
+
+    window.__pipiPlaybackEvent = (event, payload) => {
+      if (payload.token !== token) return;
+      if (event === 'remoteNext' || event === 'remotePrev') {
+        $(event === 'remoteNext' ? '#btnNext' : '#btnPrev').click();
+        return;
+      }
+      position = payload.position;
+      duration = payload.duration || NaN;
+      if (event !== 'error') paused = payload.paused;
+      events.dispatchEvent(new Event(event));
+    };
+
+    return {
+      addEventListener: events.addEventListener.bind(events),
+      get src() { return source; },
+      set src(url) {
+        source = url;
+        position = 0;
+        duration = NaN;
+        paused = true;
+        const requestToken = ++token;
+        let workers = 3;
+        try { workers = Number(localStorage.getItem('pipi_playWorkers')) || 3; } catch (_) {}
+        const track = state.current;
+        call('audioLoad', { token, url, workers, local: track.local || '',
+                            title: track.title, artist: track.artist })
+          .catch(() => {
+            if (token === requestToken) events.dispatchEvent(new Event('error'));
+          });
+      },
+      get currentTime() { return position; },
+      set currentTime(value) { position = value; send('audioSeek', value); },
+      get duration() { return duration; },
+      get paused() { return paused; },
+      get playbackRate() { return 1; },
+      get loop() { return loop; },
+      set loop(value) { loop = value; send('audioLoop', value); },
+      get volume() { return volume; },
+      set volume(value) { volume = value; send('audioVolume', value); },
+      play() { paused = false; return call('audioPlay'); },
+      pause() { paused = true; send('audioPause'); },
+    };
+  }
 
   let toastTimer = null;
 
@@ -1421,7 +1477,7 @@
   });
 
   // ---------------------------------------------------------- 音频事件
-  const mediaSession = navigator.mediaSession;
+  const mediaSession = window.__pipiNativePlayback ? null : navigator.mediaSession;
   if (mediaSession) {
     const actions = {
       play: () => audio.play().catch(() => {}),
@@ -1438,16 +1494,6 @@
   }
 
   function updateSystemPlayback(playing) {
-    const track = state.current;
-    if (window.__pipiCall && track && (track.local || track === loadedTrack)) {
-      window.__pipiCall('nowPlaying', {
-        title: track.title,
-        artist: track.artist,
-        elapsed: audio.currentTime || 0,
-        duration: Number.isFinite(audio.duration) ? audio.duration : 0,
-        rate: playing ? audio.playbackRate : 0,
-      }).catch(() => {});
-    }
     if (!mediaSession) return;
     try {
       mediaSession.playbackState = playing ? 'playing' : 'paused';
@@ -1742,6 +1788,11 @@
   elNowCover.style.display = 'none';
   if (window.__PIPI_IOS__) {
     $('#mediaSettings').hidden = false;
+    const appearance = $('#appearanceMode');
+    appearance.value = window.__pipiAppearance || 'system';
+    appearance.addEventListener('change', () => {
+      window.__pipiCall('appearance', appearance.value).catch(() => {});
+    });
     [['playWorkers', '3'], ['downloadWorkers', '4']].forEach(([id, fallback]) => {
       const select = $('#' + id);
       const key = 'pipi_' + id;

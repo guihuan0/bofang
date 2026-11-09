@@ -1,6 +1,5 @@
 import UIKit
 import WebKit
-import MediaPlayer
 
 /// JS <-> Swift 的桥。JS 发 {id, cmd, args}，Swift 用
 /// window.__pipiResolve(id, ok, payload) 回话。
@@ -12,16 +11,17 @@ final class Bridge: NSObject, WKScriptMessageHandler {
     private let queue = DispatchQueue(label: "pipi.bridge", qos: .userInitiated)
     private let mediaQueue = DispatchQueue(label: "pipi.media", qos: .userInitiated, attributes: .concurrent)
     private let lock = NSLock()
-    private var playbackInfo: [String: Any] = [:]
+    var onAppearance: ((String) -> Void)?
+    private lazy var player = NativePlayer { [weak self] event, payload in
+        guard let self = self, let data = try? JSONSerialization.data(withJSONObject: payload),
+              let json = String(data: data, encoding: .utf8) else { return }
+        self.webView?.evaluateJavaScript("window.__pipiPlaybackEvent && window.__pipiPlaybackEvent('\(event)', \(json));",
+                                         completionHandler: nil)
+    }
     static var nowPlayingIconURL: URL? {
         Bundle.main.url(forResource: "AppIcon60x60@3x", withExtension: "png")
             ?? Bundle.main.url(forResource: "AppIcon60x60@3x", withExtension: "png", subdirectory: "Web")
     }
-
-    private lazy var appArtwork: MPMediaItemArtwork? = {
-        guard let url = Self.nowPlayingIconURL, let image = UIImage(contentsOfFile: url.path) else { return nil }
-        return MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-    }()
 
     // MARK: - 收消息
 
@@ -32,11 +32,8 @@ final class Bridge: NSObject, WKScriptMessageHandler {
               let cmd = body["cmd"] as? String else { return }
 
         let args = body["args"] as? [Any] ?? []
-        if cmd == "nowPlaying" {
-            DispatchQueue.main.async { [weak self] in
-                self?.updateNowPlaying(args.first as? [String: Any] ?? [:])
-                self?.reply(reqId, ok: true, ["ok": true])
-            }
+        if cmd.hasPrefix("audio") || cmd == "appearance" {
+            DispatchQueue.main.async { [weak self] in self?.handlePlayer(reqId, cmd, args) }
             return
         }
         let target = ["play", "cover", "lyric", "lyricSearch", "download", "dlStatus"].contains(cmd) ? mediaQueue : queue
@@ -45,22 +42,32 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         }
     }
 
-    private func updateNowPlaying(_ payload: [String: Any]) {
-        guard let title = payload["title"] as? String, !title.isEmpty else { return }
-        playbackInfo[MPMediaItemPropertyTitle] = title
-        playbackInfo[MPMediaItemPropertyArtist] = payload["artist"] as? String ?? ""
-        playbackInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = payload["elapsed"] as? NSNumber
-        playbackInfo[MPMediaItemPropertyPlaybackDuration] = payload["duration"] as? NSNumber
-        playbackInfo[MPNowPlayingInfoPropertyPlaybackRate] = payload["rate"] as? NSNumber
-
-        playbackInfo[MPMediaItemPropertyArtwork] = appArtwork
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = playbackInfo
-    }
-
-    func publishActiveNowPlaying() {
-        guard let rate = playbackInfo[MPNowPlayingInfoPropertyPlaybackRate] as? NSNumber,
-              rate.doubleValue > 0 else { return }
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = playbackInfo
+    private func handlePlayer(_ reqId: Int, _ cmd: String, _ args: [Any]) {
+        let value = args.first as? NSNumber
+        switch cmd {
+        case "appearance":
+            let mode = args.first as? String ?? "system"
+            if ["system", "light", "dark"].contains(mode) { onAppearance?(mode) }
+        case "audioLoad":
+            let item = args.first as? [String: Any] ?? [:]
+            let local = item["local"] as? String ?? ""
+            let url = local.isEmpty ? URL(string: item["url"] as? String ?? "") : localFileURL(name: local)
+            guard let url = url, (!local.isEmpty || ["http", "https"].contains(url.scheme ?? "")),
+                  let token = item["token"] as? Int else {
+                reply(reqId, ok: false, "音频地址无效或文件已删除")
+                return
+            }
+            let workers = min(16, max(1, item["workers"] as? Int ?? 3))
+            player.load(url, token: token, title: item["title"] as? String ?? "",
+                        artist: item["artist"] as? String ?? "", workers: workers)
+        case "audioPlay": player.play()
+        case "audioPause": player.pause()
+        case "audioSeek": player.seek(value?.doubleValue ?? 0)
+        case "audioLoop": player.setLoop(value?.boolValue ?? false)
+        case "audioVolume": player.setVolume(value?.floatValue ?? 1)
+        default: break
+        }
+        reply(reqId, ok: true, ["ok": true])
     }
 
     private func reply(_ reqId: Int, ok: Bool, _ payload: Any) {
@@ -114,9 +121,8 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             case "play":
                 let sid = argStr(args, 0)
                 let source = argStr(args, 1)
-                let workers = workerCount(args, index: 4, fallback: 3, maximum: 3)
                 let audio = try resolvePlayback(sid: sid, title: argStr(args, 2),
-                                                artist: argStr(args, 3), source: source, workers: workers)
+                                                artist: argStr(args, 3), source: source, workers: 3)
                 var payload = audio.result.dict
                 payload["source"] = audio.source
                 reply(reqId, ok: true, payload)
