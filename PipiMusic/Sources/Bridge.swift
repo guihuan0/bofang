@@ -36,7 +36,7 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             DispatchQueue.main.async { [weak self] in self?.handlePlayer(reqId, cmd, args) }
             return
         }
-        let target = ["play", "cover", "lyric", "lyricSearch", "download", "dlStatus"].contains(cmd) ? mediaQueue : queue
+        let target = ["play", "cover", "lyric", "lyricSearch", "download", "dlStatus", "playlistPage"].contains(cmd) ? mediaQueue : queue
         target.async { [weak self] in
             self?.dispatch(reqId: reqId, cmd: cmd, args: args)
         }
@@ -61,6 +61,12 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             player.load(url, token: token, title: item["title"] as? String ?? "",
                         artist: item["artist"] as? String ?? "", workers: workers)
         case "audioPlay": player.play()
+        case "audioPrepare":
+            let item = args.first as? [String: Any] ?? [:]
+            if let url = URL(string: item["url"] as? String ?? ""),
+               ["http", "https"].contains(url.scheme ?? "") {
+                player.prepare(url, workers: min(16, max(1, item["workers"] as? Int ?? 3)))
+            }
         case "audioPause": player.pause()
         case "audioSeek": player.seek(value?.doubleValue ?? 0)
         case "audioLoop": player.setLoop(value?.boolValue ?? false)
@@ -142,7 +148,11 @@ final class Bridge: NSObject, WKScriptMessageHandler {
                 let title = argStr(args, 0)
                 let artist = argStr(args, 1)
                 let source = argStr(args, 2)
-                reply(reqId, ok: true, try lyricSearch(title: title, artist: artist, source: source))
+                let result = try lyricSearch(title: title, artist: artist, source: source)
+                if let cover = result["cover"] as? String, let file = localFileURL(name: argStr(args, 3)) {
+                    saveDownloadCover(cover, audio: file)
+                }
+                reply(reqId, ok: true, result)
 
             case "resolve":
                 let title = argStr(args, 0)
@@ -164,8 +174,28 @@ final class Bridge: NSObject, WKScriptMessageHandler {
                 let source = argStr(args, 3)
                 let workers = workerCount(args, index: 4, fallback: 4, maximum: 16)
                 let started = try prepareDownload(sid: sid, title: title,
-                                                  artist: artist, source: source, workers: workers)
+                                                  artist: artist, source: source, workers: workers,
+                                                  cover: argStr(args, 5))
                 reply(reqId, ok: true, started)
+
+            case "playlistPage":
+                guard let url = URL(string: argStr(args, 0)), url.scheme == "https",
+                      Self.playlistHosts.contains(url.host ?? "") else {
+                    throw PipiError.message("不支持这个歌单链接")
+                }
+                var request = URLRequest(url: url, timeoutInterval: 12)
+                request.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36",
+                                 forHTTPHeaderField: "User-Agent")
+                URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
+                    guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                          let finalURL = http.url, Self.playlistHosts.contains(finalURL.host ?? ""),
+                          let data = data, data.count <= 8 * 1024 * 1024,
+                          let html = String(data: data, encoding: .utf8) else {
+                        self?.reply(reqId, ok: false, "歌单页面打不开，请确认链接公开可访问")
+                        return
+                    }
+                    self?.reply(reqId, ok: true, ["html": html, "url": finalURL.absoluteString])
+                }.resume()
 
             case "downloads":
                 reply(reqId, ok: true, ["items": listDownloads()])
@@ -204,6 +234,7 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             "lines": lines.map { ["t": $0.t, "text": $0.text] },
             "title": best.title,
             "artist": best.artist,
+            "cover": r.cover,
         ]
     }
 
@@ -362,9 +393,11 @@ final class Bridge: NSObject, WKScriptMessageHandler {
     }
 
     private var dlJobs: [String: [String: Any]] = [:]
+    private static let playlistHosts: Set<String> = ["y.qq.com", "c.y.qq.com", "www.kugou.com",
+                                                     "music.douyin.com", "qishui.douyin.com"]
 
     private func prepareDownload(sid: String, title: String, artist: String,
-                                 source: String, workers: Int) throws -> [String: Any] {
+                                 source: String, workers: Int, cover: String) throws -> [String: Any] {
         let stem = artist.isEmpty ? title : "\(artist) - \(title)"
         let taskId = UUID().uuidString
         let losslessSource = source == "aac" ? "aac" : "vipp3"
@@ -373,7 +406,8 @@ final class Bridge: NSObject, WKScriptMessageHandler {
                                         source: source, candidate: losslessSource),
            let url = LosslessDownload.resolve(source: candidate, id: id) {
             let saved = try beginDownload(taskId: taskId, url: url.absoluteString,
-                                          name: safeName(stem) + ".flac", workers: workers)
+                                          name: safeName(stem) + ".flac", workers: workers, cover: cover,
+                                          coverTrack: (id, losslessSource))
             return ["ok": true, "task": taskId, "source": losslessSource, "name": saved, "lossless": true]
         }
 
@@ -389,11 +423,13 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         let pathExt = URL(string: audio.url)?.pathExtension.lowercased() ?? ""
         let ext = ["mp3", "m4a", "flac", "wav", "aac", "ogg"].contains(pathExt) ? pathExt : "mp3"
         let saved = try beginDownload(taskId: taskId, url: audio.url,
-                                      name: safeName(stem) + "." + ext, workers: workers)
+                                      name: safeName(stem) + "." + ext, workers: workers,
+                                      cover: cover.isEmpty ? audio.cover : cover, coverTrack: nil)
         return ["ok": true, "task": taskId, "source": "33ve", "name": saved]
     }
 
-    private func beginDownload(taskId: String, url: String, name: String, workers: Int) throws -> String {
+    private func beginDownload(taskId: String, url: String, name: String, workers: Int,
+                               cover: String, coverTrack: (id: String, source: String)?) throws -> String {
         guard let url = URL(string: url), ["http", "https"].contains(url.scheme ?? "") else {
             throw PipiError.message("下载地址非法")
         }
@@ -443,6 +479,12 @@ final class Bridge: NSObject, WKScriptMessageHandler {
                     }
                 }
                 try FileManager.default.moveItem(at: tmp, to: dest)
+                self.mediaQueue.async { [weak self] in
+                    let remote = cover.isEmpty ? coverTrack.flatMap {
+                        try? ClientPool.shared.client($0.source).playURL(id: $0.id).cover
+                    } ?? "" : cover
+                    self?.saveDownloadCover(remote, audio: dest)
+                }
                 self.dlJobs[taskId] = ["status": "done", "done": size, "total": size,
                                        "percent": 100.0, "name": dest.lastPathComponent, "error": ""]
             } catch {
@@ -483,14 +525,20 @@ final class Bridge: NSObject, WKScriptMessageHandler {
                 title = String(stem[r.upperBound...]).trimmingCharacters(in: .whitespaces)
             }
 
-            out.append([
+            let cover = f.appendingPathExtension("cover.jpg")
+            var item: [String: Any] = [
                 "name": f.lastPathComponent,
                 "title": title,
                 "artist": artist,
                 "size": size,
                 "mtime": mtime,
                 "ext": ext,
-            ])
+            ]
+            if FileManager.default.fileExists(atPath: cover.path),
+               let encoded = f.lastPathComponent.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) {
+                item["cover"] = "pipilocal://cover/\(encoded)"
+            }
+            out.append(item)
         }
         out.sort { ($0["mtime"] as? Double ?? 0) > ($1["mtime"] as? Double ?? 0) }
         return out
@@ -498,10 +546,27 @@ final class Bridge: NSObject, WKScriptMessageHandler {
 
     private func deleteDownload(name: String) throws {
         let base = (name as NSString).lastPathComponent
-        guard !base.isEmpty, base != ".", base != ".." else { return }
+        guard base == name, !base.isEmpty, base != ".", base != ".." else {
+            throw PipiError.message("无效的下载文件名")
+        }
         let path = downloadsDir.appendingPathComponent(base)
-        guard path.path.hasPrefix(downloadsDir.path) else { return }
-        try? FileManager.default.removeItem(at: path)
+        lock.lock()
+        defer { lock.unlock() }
+        let cover = path.appendingPathExtension("cover.jpg")
+        if FileManager.default.fileExists(atPath: cover.path) { try FileManager.default.removeItem(at: cover) }
+        if FileManager.default.fileExists(atPath: path.path) { try FileManager.default.removeItem(at: path) }
+    }
+
+    private func saveDownloadCover(_ cover: String, audio: URL) {
+        guard let url = URL(string: cover), ["http", "https"].contains(url.scheme ?? "") else { return }
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+            guard let self = self, let data = data, let image = UIImage(data: data),
+                  let jpeg = image.jpegData(compressionQuality: 0.85) else { return }
+            self.lock.lock()
+            defer { self.lock.unlock() }
+            guard FileManager.default.fileExists(atPath: audio.path) else { return }
+            try? jpeg.write(to: audio.appendingPathExtension("cover.jpg"), options: .atomic)
+        }.resume()
     }
 
     /// 给本地播放用的 file:// 地址

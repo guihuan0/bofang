@@ -38,7 +38,9 @@ final class LocalAudioScheme: NSObject, WKURLSchemeHandler {
             return
         }
 
-        let file = downloadsDir.appendingPathComponent(name)
+        let audio = downloadsDir.appendingPathComponent(name)
+        let isCover = url.host == "cover"
+        let file = isCover ? audio.appendingPathExtension("cover.jpg") : audio
         guard file.path.hasPrefix(downloadsDir.path),
               FileManager.default.fileExists(atPath: file.path) else {
             task.didFailWithError(PipiError.message("not found"))
@@ -54,7 +56,7 @@ final class LocalAudioScheme: NSObject, WKURLSchemeHandler {
         var start = 0
         var end = size - 1
         var status = 200
-        var headers = ["Content-Type": mime(file.pathExtension), "Accept-Ranges": "bytes",
+        var headers = ["Content-Type": isCover ? "image/jpeg" : mime(file.pathExtension), "Accept-Ranges": "bytes",
                        "Access-Control-Allow-Origin": "*"]
         if let range = task.request.value(forHTTPHeaderField: "Range"),
            range.hasPrefix("bytes="), !range.contains(",") {

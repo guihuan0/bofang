@@ -172,7 +172,6 @@
     return { ok: false, error: 'unsupported' };
   }
 
-  // 文本歌单：链接导入在 iOS 版走不通（需要后端抓 HTML），文本模式完整可用
   function importText(text) {
     var lines = (text || '').replace(/\r/g, '\n').split('\n');
     var tracks = [];
@@ -187,8 +186,7 @@
       var title = '', artist = '';
       var m = line.match(/^(.+?)\s*[-–—]\s*(.+)$/) ||
               line.match(/^(.+?)\s+by\s+(.+)$/i) ||
-              line.match(/^(.+?)\s*\/\s*(.+)$/) ||
-              line.match(/^(.+?)\s+(.+)$/);
+              line.match(/^(.+?)\s+\/\s+(.+)$/) || line.match(/^(.+?)\t+(.+)$/);
       if (m) { title = m[1].trim(); artist = m[2].trim(); }
       else { title = line; }
 
@@ -199,20 +197,89 @@
       tracks.push({ title: title, artist: artist });
     }
 
-    if (!tracks.length) return { ok: false, error: '没解析出任何歌曲，检查一下是不是每行一首' };
+    return saveImportedPlaylist('导入的歌单', 'text', tracks);
+  }
 
-    var pid = 'p' + Date.now().toString(36);
-    var list = lsGet('playlists', []);
-    list.unshift({
-      id: pid, name: '导入的歌单', platform: 'text',
-      tracks: tracks, created: Date.now() / 1000
+  function saveImportedPlaylist(name, platform, tracks) {
+    const unique = new Map();
+    tracks.forEach(({title, artist}) => {
+      title = String(title || '').trim();
+      artist = String(artist || '').trim();
+      if (title) unique.set(JSON.stringify([title, artist]), {title, artist});
     });
+    tracks = Array.from(unique.values());
+    if (!tracks.length) return {ok: false, error: '没有找到歌曲。请确认歌单公开，或粘贴每行一首的文本。'};
+    const id = 'p' + Date.now().toString(36);
+    const list = lsGet('playlists', []);
+    list.unshift({id, name, platform, tracks, created: Date.now() / 1000});
     lsSet('playlists', list);
+    return {ok: true, id, name, platform, count: tracks.length};
+  }
 
-    return {
-      ok: true, id: pid, name: '导入的歌单', platform: 'text',
-      count: tracks.length, tracks: tracks.slice(0, 200)
-    };
+  function readEmbeddedJSON(html, start) {
+    if (start < 0) return null;
+    const open = html[start];
+    const close = open === '[' ? ']' : '}';
+    let depth = 0, quoted = false, escaped = false;
+    for (let i = start; i < html.length; i++) {
+      const ch = html[i];
+      if (quoted) {
+        if (escaped) escaped = false;
+        else if (ch === '\\') escaped = true;
+        else if (ch === '"') quoted = false;
+      } else if (ch === '"') quoted = true;
+      else if (ch === open) depth++;
+      else if (ch === close && --depth === 0) return JSON.parse(html.slice(start, i + 1));
+    }
+    return null;
+  }
+
+  async function importLink(link) {
+    let url = new URL(link);
+    if (url.hostname === 'y.qq.com') {
+      const id = url.pathname.match(/\/playlist\/(\d+)/)?.[1] || url.searchParams.get('disstid');
+      if (id && /^\d+$/.test(id)) url = new URL('https://y.qq.com/n/ryqq/playlist/' + id);
+    }
+    let result = await call('playlistPage', url.href);
+    let html = result.html;
+    const host = new URL(result.url).hostname;
+    if (host === 'qishui.douyin.com' && !html.includes('_ROUTER_DATA')) {
+      const id = html.match(/playlist_id=(\d+)/)?.[1];
+      if (id) {
+        result = await call('playlistPage', 'https://music.douyin.com/qishui/share/playlist?playlist_id=' + id);
+        html = result.html;
+      }
+    }
+    const page = new DOMParser().parseFromString(html, 'text/html');
+    if (host === 'y.qq.com' || host === 'c.y.qq.com') {
+      const tracks = Array.from(page.querySelectorAll('.songlist__item'), row => {
+        const link = row.querySelector('.songlist__songname_txt a');
+        return {
+          title: link?.getAttribute('title') || link?.textContent,
+          artist: Array.from(row.querySelectorAll('.songlist__artist a'), a => a.textContent.trim()).join(' / '),
+        };
+      });
+      return saveImportedPlaylist(page.querySelector('.data__name, .playlist__name')?.textContent.trim() || 'QQ音乐歌单', 'qq', tracks);
+    }
+    if (host === 'www.kugou.com') {
+      const match = /var\s+data\s*=\s*\[/.exec(html);
+      const rows = match ? readEmbeddedJSON(html, match.index + match[0].length - 1) || [] : [];
+      const tracks = rows.map(row => ({
+        title: row.songname || row.song_name,
+        artist: row.singername || (row.authors || []).map(a => a.author_name).filter(Boolean).join(' / '),
+      }));
+      return saveImportedPlaylist(page.title.split(/[_-]/)[0].trim() || '酷狗歌单', 'kugou', tracks);
+    }
+    const marker = html.indexOf('_ROUTER_DATA');
+    const data = marker >= 0 ? readEmbeddedJSON(html, html.indexOf('{', marker)) : null;
+    const playlist = data?.loaderData?.playlist_page;
+    const tracks = (playlist?.medias || []).map(row => ({
+      title: row.name || row.title,
+      artist: Array.isArray(row.artists || row.artist)
+        ? (row.artists || row.artist).map(a => typeof a === 'string' ? a : a.name || a.artistName).filter(Boolean).join(' / ')
+        : row.artist || '',
+    }));
+    return saveImportedPlaylist(playlist?.playlistInfo?.title || '汽水音乐歌单', 'qishui', tracks);
   }
 
   function dispatch(path, q, method, body) {
@@ -267,7 +334,7 @@
     }
 
     if (path === '/api/lyric/search') {
-      return call('lyricSearch', q.title || '', q.artist || '', q.source || 'vipp3');
+      return call('lyricSearch', q.title || '', q.artist || '', q.source || 'vipp3', q.local || '');
     }
 
     if (path === '/api/resolve') {
@@ -282,20 +349,15 @@
     if (path === '/api/import') {
       var text = (body.text || '').trim();
       if (!text) return Promise.resolve({ ok: false, error: '先贴点东西进来' });
-      if (/^https?:\/\//i.test(text) || /y\.qq\.com|kugou\.com|douyin\.com|kuwo\.cn/.test(text)) {
-        return Promise.resolve({
-          ok: false,
-          error: 'iOS 版暂时只能导入纯文本歌单：\n' +
-                 '在电脑上打开歌单，把「歌名 - 歌手」按行复制过来贴进这里。'
-        });
-      }
+      const link = text.match(/https?:\/\/[^\s，。；、<>]+/i)?.[0];
+      if (link) return importLink(link).catch(error => ({ok: false, error: error.message || '歌单导入失败'}));
       return Promise.resolve(importText(text));
     }
 
     // --- 下载 ---
     if (path === '/api/download') {
       return call('download', body.id || '', body.title || '',
-                  body.artist || '', body.source || 'vipp3', lsGet('downloadWorkers', 4));
+                  body.artist || '', body.source || 'vipp3', lsGet('downloadWorkers', 4), body.cover || '');
     }
 
     if (path === '/api/download/status') {

@@ -1063,3 +1063,15 @@ body.ios .toast.err { color: var(--pink); }
     box-shadow: 0 16px 24px #080c125c;
   }
 }
+
+body.ios .download-cover {
+  width: 38px;
+  height: 38px;
+  flex: none;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+body.ios.player-expanded .turntable,
+body.ios.player-expanded .disc,
+body.ios.player-expanded .player-heading { touch-action: none; }

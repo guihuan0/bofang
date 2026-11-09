@@ -11,6 +11,9 @@ final class NativePlayer {
     private var tick: Any?
     private var probe: URLSessionDataTask?
     private var loader: AudioRangeLoader?
+    private var prepared: (url: URL, asset: AVURLAsset, loader: AudioRangeLoader?)?
+    private var prepareTask: URLSessionDataTask?
+    private var prepareID = UUID()
     private var url: URL?
     private var token = 0
     private var wantsPlay = false
@@ -46,6 +49,7 @@ final class NativePlayer {
         if let ended = ended { NotificationCenter.default.removeObserver(ended) }
         remoteTargets.forEach { $0.0.removeTarget($0.1) }
         probe?.cancel()
+        prepareTask?.cancel()
     }
 
     private func bind(_ command: MPRemoteCommand, handler: @escaping (NativePlayer, MPRemoteCommandEvent) -> Void) {
@@ -73,6 +77,14 @@ final class NativePlayer {
         self.title = title
         self.artist = artist
         wantsPlay = false
+        let ready = prepared
+        prepared = nil
+        prepareTask?.cancel()
+        prepareID = UUID()
+        if let ready = ready, ready.url == url {
+            install(url, loader: ready.loader, asset: ready.asset)
+            return
+        }
         if workers > 1, ["http", "https"].contains(url.scheme ?? "") {
             probe = AudioRangeLoader.probe(url, workers: workers) { [weak self] loader in
                 DispatchQueue.main.async {
@@ -87,17 +99,40 @@ final class NativePlayer {
         }
     }
 
-    private func install(_ url: URL, loader: AudioRangeLoader?, resumeAt: Double = 0) {
-        self.loader = loader
-        let asset: AVURLAsset
+    func prepare(_ url: URL, workers: Int) {
+        prepareTask?.cancel()
+        let id = UUID()
+        prepareID = id
+        prepared = nil
+        func warm(_ loader: AudioRangeLoader?) {
+            guard prepareID == id else { return }
+            let asset = makeAsset(url, loader: loader)
+            prepared = (url, asset, loader)
+            asset.loadValuesAsynchronously(forKeys: ["playable", "tracks", "duration"], completionHandler: nil)
+        }
+        if workers > 1, ["http", "https"].contains(url.scheme ?? "") {
+            prepareTask = AudioRangeLoader.probe(url, workers: workers) { loader in
+                DispatchQueue.main.async { warm(loader) }
+            }
+            prepareTask?.resume()
+        } else {
+            warm(nil)
+        }
+    }
+
+    private func makeAsset(_ url: URL, loader: AudioRangeLoader?) -> AVURLAsset {
         if let loader = loader, var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) {
             parts.scheme = "pipirange"
-            asset = AVURLAsset(url: parts.url ?? url)
+            let asset = AVURLAsset(url: parts.url ?? url)
             asset.resourceLoader.setDelegate(loader, queue: loader.queue)
-        } else {
-            asset = AVURLAsset(url: url)
+            return asset
         }
-        let item = AVPlayerItem(asset: asset)
+        return AVURLAsset(url: url)
+    }
+
+    private func install(_ url: URL, loader: AudioRangeLoader?, resumeAt: Double = 0, asset: AVURLAsset? = nil) {
+        self.loader = loader
+        let item = AVPlayerItem(asset: asset ?? makeAsset(url, loader: loader))
         status = nil
         if let ended = ended { NotificationCenter.default.removeObserver(ended) }
         player.replaceCurrentItem(with: item)

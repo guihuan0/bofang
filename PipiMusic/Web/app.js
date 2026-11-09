@@ -62,6 +62,11 @@
   let lastSearchResults = [];
   let shuffledOrder = [];
   let loadedTrack = null;
+  let nextPreload = null;
+
+  function playbackWorkers() {
+    try { return Number(localStorage.getItem('pipi_playWorkers')) || 3; } catch (_) { return 3; }
+  }
 
   function makeNativeAudio() {
     const events = new EventTarget();
@@ -96,8 +101,7 @@
         duration = NaN;
         paused = true;
         const requestToken = ++token;
-        let workers = 3;
-        try { workers = Number(localStorage.getItem('pipi_playWorkers')) || 3; } catch (_) {}
+        const workers = playbackWorkers();
         const track = state.current;
         call('audioLoad', { token, url, workers, local: track.local || '',
                             title: track.title, artist: track.artist })
@@ -229,6 +233,7 @@
       title: item.title || item.raw || '',
       artist: item.artist || '',
       source: item.source || currentSource(),
+      cover: item.cover || '',
     })
       .then((res) => {
         if (!res.ok) {
@@ -375,7 +380,8 @@
 
     const del = document.createElement('button');
     del.className = 'icon-btn';
-    del.title = '删除文件';
+    del.title = '永久删除下载';
+    del.setAttribute('aria-label', '永久删除 ' + (f.title || f.name));
     del.innerHTML = '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>';
     del.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -383,7 +389,17 @@
     });
     act.appendChild(del);
 
-    row.appendChild(idx);
+    if (f.cover) {
+      const cover = document.createElement('img');
+      cover.className = 'download-cover';
+      cover.alt = '';
+      cover.src = f.cover;
+      cover.loading = 'lazy';
+      cover.onerror = () => cover.replaceWith(idx);
+      row.appendChild(cover);
+    } else {
+      row.appendChild(idx);
+    }
     row.appendChild(info);
     row.appendChild(tag);
     row.appendChild(meta);
@@ -411,7 +427,7 @@
       id: 'local:' + f.name,
       title: f.title || f.name,
       artist: f.artist || '本地文件',
-      cover: '',
+      cover: f.cover || '',
       lkid: '',
       source: 'local',
       local: f.name,
@@ -419,13 +435,19 @@
   }
 
   function playLocal(track) {
+    nextPreload = null;
     state.current = track;
     loadedTrack = track;
 
     elNowTitle.textContent = state.current.title;
     elNowArtist.textContent = state.current.artist;
-    elNowCover.removeAttribute('src');
-    elNowCover.style.display = 'none';
+    if (track.cover) {
+      elNowCover.src = track.cover;
+      elNowCover.style.display = '';
+    } else {
+      elNowCover.removeAttribute('src');
+      elNowCover.style.display = 'none';
+    }
     elSideTip.textContent = '本地播放';
     syncFavBtn();
 
@@ -453,12 +475,18 @@
     }
     const q = '/api/lyric/search?title=' + encodeURIComponent(f.title) +
               '&artist=' + encodeURIComponent(f.artist || '') +
-              '&source=' + encodeURIComponent(currentSource());
+              '&source=' + encodeURIComponent(currentSource()) +
+              '&local=' + encodeURIComponent(f.name);
     fetch(q)
       .then((r) => r.json())
       .then((res) => {
         // 期间可能已经切歌了
         if (!state.current || !state.current.local || state.current.local !== f.name) return;
+        if (!state.current.cover && res.cover) {
+          state.current.cover = coverURL(res.cover);
+          elNowCover.src = state.current.cover;
+          elNowCover.style.display = '';
+        }
         const lines = (res && res.lines) || [];
         if (!lines.length) {
           showLyricsMessage('这首歌暂无歌词');
@@ -486,8 +514,17 @@
           return;
         }
         toast('已删除 ' + (f.title || f.name));
+        const index = state.queue.findIndex((track) => track.local === f.name || track.id === 'local:' + f.name);
+        if (index >= 0) {
+          state.queue.splice(index, 1);
+          if (index <= state.index) state.index--;
+          resetShuffle();
+          renderQueue();
+        }
+        if (state.current?.local === f.name) audio.pause();
         loadDownloads();
-      });
+      })
+      .catch((error) => toast('删除失败：' + error.message, true));
   }
 
   const elDlOpen = $('#dlOpenFolder');
@@ -1013,92 +1050,23 @@
   }
 
   function playPlaylistTrack(row, card) {
-    const st = row.querySelector('.st');
-    const title = row.dataset.title;
-    const artist = row.dataset.artist;
-
-    // 已经解析过，直接播
-    if (row.dataset.songId) {
-      playItem({
-        id: row.dataset.songId,
-        title: row.dataset.songTitle || title,
-        artist: row.dataset.songArtist || artist,
-      }, []);
-      return;
-    }
-
-    st.textContent = '查找中';
-    st.className = 'st load';
-
-    resolveTrack(title, artist)
-      .then((res) => {
-        if (!res.ok) {
-          st.textContent = '没找到';
-          st.className = 'st fail';
-          toast('本站没搜到：' + title, true);
-          return;
-        }
-        const s = res.song;
-        row.dataset.songId = s.id;
-        row.dataset.songTitle = s.title;
-        row.dataset.songArtist = s.artist;
-        st.textContent = '✓';
-        st.className = 'st ok';
-        playItem({ id: s.id, title: s.title, artist: s.artist }, []);
-      })
-      .catch(() => {
-        st.textContent = '失败';
-        st.className = 'st fail';
-      });
+    const rows = Array.from(card.querySelectorAll('.pl-track'));
+    playPlaylistFrom(card, rows.indexOf(row));
   }
 
-  // 播放全部：从第 index 首开始，逐首解析
   function playPlaylistFrom(card, index) {
-    const rows = Array.prototype.slice.call(card.querySelectorAll('.pl-track'));
-    if (!rows.length) return;
-    let i = index || 0;
-
-    function step() {
-      if (i >= rows.length) {
-        toast('这个歌单播完了');
-        return;
-      }
-      const row = rows[i];
-      const st = row.querySelector('.st');
-      st.textContent = '查找中';
-      st.className = 'st load';
-
-      resolveTrack(row.dataset.title, row.dataset.artist)
-        .then((res) => {
-          if (!res.ok) {
-            st.textContent = '跳过';
-            st.className = 'st fail';
-            i += 1;
-            step();
-            return;
-          }
-          const s = res.song;
-          row.dataset.songId = s.id;
-          row.dataset.songTitle = s.title;
-          row.dataset.songArtist = s.artist;
-          st.textContent = '✓';
-          st.className = 'st ok';
-          playItem({ id: s.id, title: s.title, artist: s.artist }, []);
-        })
-        .catch(() => {
-          st.textContent = '失败';
-          st.className = 'st fail';
-          i += 1;
-          step();
-        });
-    }
-    step();
+    const tracks = Array.from(card.querySelectorAll('.pl-track'), (row) => ({
+      title: row.dataset.title,
+      artist: row.dataset.artist,
+      source: currentSource(),
+    }));
+    if (tracks[index]) playItem(tracks[index], tracks, true);
   }
 
   function paintPlaylistPlaying() {
-    const cur = state.current ? state.current.id : '';
     $$('.pl-track').forEach((r) => {
-      r.classList.toggle('playing', !!cur && r.dataset.songId === cur);
+      r.classList.toggle('playing', !!state.current &&
+        r.dataset.title === state.current.title && r.dataset.artist === state.current.artist);
     });
   }
 
@@ -1152,10 +1120,22 @@
   });
 
   // ---------------------------------------------------------- 播放
-  function playItem(item, queue) {
+  async function resolvePlaybackItem(item) {
+    if (!item.id && item.title) {
+      const resolved = await resolveTrack(item.title, item.artist);
+      if (!resolved.ok || !resolved.song) return { ok: false, error: '音源没有找到这首歌' };
+      item = resolved.song;
+    }
+    return postJSON('/api/play', {
+      id: item.id, title: item.title, artist: item.artist,
+      cover: item.cover, source: item.source || currentSource(),
+    });
+  }
+
+  function playItem(item, queue, useExactQueue = false) {
     if (!item) return;
     if (queue !== undefined) {
-      const tracks = state.favs.length ? state.favs : queue;
+      const tracks = !useExactQueue && state.favs.length ? state.favs : queue;
       state.queue = tracks.slice();
       state.index = state.queue.findIndex((song) => favKey(song) === favKey(item));
       if (state.index === -1) {
@@ -1194,13 +1174,10 @@
     }
     syncFavBtn();
 
-    postJSON('/api/play', {
-      id: state.current.id,
-      title: state.current.title,
-      artist: state.current.artist,
-      cover: state.current.cover,
-      source: state.current.source,
-    })
+    const ready = nextPreload && nextPreload.item === item && Date.now() - nextPreload.started < 45000
+      ? nextPreload.result : null;
+    nextPreload = null;
+    (ready ? ready.then((result) => result?.ok ? result : resolvePlaybackItem(item)) : resolvePlaybackItem(item))
       .then((res) => {
         if (state.current !== track) return;
         if (!res.ok) {
@@ -1349,6 +1326,22 @@
     }
     if (automatic && state.mode === 'shuffle' && order.length === 1) return;
     playQueued(order[(position + order.length) % order.length]);
+  }
+
+  function preloadNextSong() {
+    if (state.mode === 'repeatOne' || state.queue.length < 2 || state.current !== loadedTrack) return;
+    const order = state.mode === 'shuffle' ? shuffledOrder : state.queue.map((_, index) => index);
+    const position = order.indexOf(state.index) + 1;
+    if (position >= order.length && state.mode === 'sequential') return;
+    const item = state.queue[order[position % order.length]];
+    if (!item || item.local || String(item.id || '').startsWith('local:') || nextPreload?.item === item) return;
+    const preload = { item, started: Date.now(), result: resolvePlaybackItem(item).catch(() => null) };
+    nextPreload = preload;
+    preload.result.then((result) => {
+      if (nextPreload === preload && result?.ok && window.__pipiNativePlayback) {
+        window.__pipiCall('audioPrepare', { url: result.stream, workers: playbackWorkers() }).catch(() => {});
+      }
+    });
   }
 
   $('#btnPlay').addEventListener('click', () => {
@@ -1519,6 +1512,7 @@
     elTCur.textContent = fmtTime(c);
     if (d) elTDur.textContent = fmtTime(d);
     syncLyric(c);
+    if (d > 0 && d - c <= 30 && !audio.paused) preloadNextSong();
   });
 
   audio.addEventListener('loadedmetadata', () => {
@@ -1686,6 +1680,29 @@
 
   openPlayer.addEventListener('click', () => setPlayerExpanded(true));
   closePlayer.addEventListener('click', () => setPlayerExpanded(false));
+  const immersive = $('#playbar');
+  let swipeStart = null;
+  immersive.addEventListener('touchstart', (event) => {
+    if (!document.body.classList.contains('player-expanded') || event.touches.length !== 1 ||
+        event.target.closest('button:not(#openPlayer), #seekBar, #playerLyrics, #playerQueue')) {
+      swipeStart = null;
+      return;
+    }
+    const touch = event.touches[0];
+    swipeStart = { x: touch.clientX, y: touch.clientY, scroll: immersive.scrollTop };
+  }, { passive: true });
+  immersive.addEventListener('touchcancel', () => { swipeStart = null; });
+  immersive.addEventListener('touchend', (event) => {
+    if (!swipeStart || !event.changedTouches.length) return;
+    const start = swipeStart;
+    swipeStart = null;
+    const x = event.changedTouches[0].clientX - start.x;
+    const y = event.changedTouches[0].clientY - start.y;
+    if ((x >= 70 && x > Math.abs(y) * 1.35) ||
+        (start.scroll === 0 && y >= 70 && y > Math.abs(x) * 1.35)) {
+      setPlayerExpanded(false);
+    }
+  }, { passive: true });
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && document.body.classList.contains('player-expanded')) {
       if (!playerQueue.hidden) setQueueVisible(false);
