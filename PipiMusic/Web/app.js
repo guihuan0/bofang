@@ -807,7 +807,7 @@
 
   elSearchBtn.addEventListener('click', () => doSearch(elSearch.value));
   elSearch.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') doSearch(elSearch.value);
+    if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) doSearch(elSearch.value);
   });
 
   $$('#chips button').forEach((b) => {

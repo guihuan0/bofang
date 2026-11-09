@@ -635,7 +635,15 @@ body.ios .searchbox {
   border-radius: 14px;
 }
 body.ios .searchbox:focus-within { border-color: var(--acc); box-shadow: none; }
-body.ios .searchbox input { min-width: 0; width: 0; font-size: 16px; }
+body.ios .searchbox input {
+  min-width: 0;
+  width: 0;
+  font-size: 16px;
+  -webkit-appearance: none;
+  appearance: none;
+  outline: none;
+}
+body.ios .searchbox input:focus-visible { outline: none; }
 body.ios .searchbox .go {
   flex: none;
   min-height: 44px;
