@@ -19,6 +19,9 @@ enum LosslessDownload {
             var request = URLRequest(url: login, timeoutInterval: 5)
             request.httpMethod = "POST"
             request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+            request.setValue(source.base, forHTTPHeaderField: "Origin")
+            request.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
+            request.setValue(PipiClient.USER_AGENT, forHTTPHeaderField: "User-Agent")
             request.setValue(source.base + "/down.php?ac=music&id=" + id, forHTTPHeaderField: "Referer")
             var form = URLComponents()
             form.queryItems = [URLQueryItem(name: "lkpwd", value: password)]
