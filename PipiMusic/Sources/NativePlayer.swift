@@ -24,7 +24,12 @@ final class NativePlayer {
     private lazy var artwork: MPMediaItemArtwork? = {
         guard let url = Bridge.nowPlayingIconURL, let image = UIImage(contentsOfFile: url.path) else { return nil }
         let bounds = CGRect(origin: .zero, size: image.size)
-        let circular = UIGraphicsImageRenderer(size: bounds.size).image { _ in
+        let format = UIGraphicsImageRendererFormat()
+        format.opaque = true
+        format.scale = image.scale
+        let circular = UIGraphicsImageRenderer(size: bounds.size, format: format).image { context in
+            UIColor.black.setFill()
+            context.fill(bounds)
             UIBezierPath(ovalIn: bounds).addClip()
             image.draw(in: bounds)
         }
