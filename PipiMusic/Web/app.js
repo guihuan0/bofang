@@ -1443,7 +1443,6 @@
       window.__pipiCall('nowPlaying', {
         title: track.title,
         artist: track.artist,
-        cover: track.cover ? elNowCover.src : '',
         elapsed: audio.currentTime || 0,
         duration: Number.isFinite(audio.duration) ? audio.duration : 0,
         rate: playing ? audio.playbackRate : 0,
@@ -1454,11 +1453,11 @@
       mediaSession.playbackState = playing ? 'playing' : 'paused';
       if (playing && state.current && window.MediaMetadata) {
         const track = state.current;
-        const artwork = new URL(track.cover || 'AppIcon1024.png', location.href).href;
+        const artwork = window.__pipiSystemArtwork || new URL('AppIcon60x60@3x.png', location.href).href;
         mediaSession.metadata = new MediaMetadata({
           title: track.title,
           artist: track.artist,
-          artwork: [{ src: artwork }],
+          artwork: [{ src: artwork, sizes: '180x180', type: 'image/png' }],
         });
       }
     } catch (_) {}

@@ -36,6 +36,11 @@ final class WebController: UIViewController, WKNavigationDelegate, WKUIDelegate 
 
         let ucc = WKUserContentController()
         ucc.add(bridge, name: Bridge.name)
+        if let icon = Bridge.nowPlayingIconURL, let data = try? Data(contentsOf: icon) {
+            let artwork = "data:image/png;base64,\(data.base64EncodedString())"
+            ucc.addUserScript(WKUserScript(source: "window.__pipiSystemArtwork = '\(artwork)';",
+                                          injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
         config.userContentController = ucc
 
         // 关掉长按选择和弹出菜单，像个原生 app

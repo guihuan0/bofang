@@ -13,12 +13,13 @@ final class Bridge: NSObject, WKScriptMessageHandler {
     private let mediaQueue = DispatchQueue(label: "pipi.media", qos: .userInitiated, attributes: .concurrent)
     private let lock = NSLock()
     private var playbackInfo: [String: Any] = [:]
-    private var artworkURL: URL?
-    private var artworkTask: URLSessionDataTask?
-    private lazy var fallbackArtwork: MPMediaItemArtwork? = {
-        let url = Bundle.main.url(forResource: "AppIcon1024", withExtension: "png", subdirectory: "Web")
-            ?? Bundle.main.url(forResource: "AppIcon1024", withExtension: "png")
-        guard let url = url, let image = UIImage(contentsOfFile: url.path) else { return nil }
+    static var nowPlayingIconURL: URL? {
+        Bundle.main.url(forResource: "AppIcon60x60@3x", withExtension: "png")
+            ?? Bundle.main.url(forResource: "AppIcon60x60@3x", withExtension: "png", subdirectory: "Web")
+    }
+
+    private lazy var appArtwork: MPMediaItemArtwork? = {
+        guard let url = Self.nowPlayingIconURL, let image = UIImage(contentsOfFile: url.path) else { return nil }
         return MPMediaItemArtwork(boundsSize: image.size) { _ in image }
     }()
 
@@ -52,27 +53,7 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         playbackInfo[MPMediaItemPropertyPlaybackDuration] = payload["duration"] as? NSNumber
         playbackInfo[MPNowPlayingInfoPropertyPlaybackRate] = payload["rate"] as? NSNumber
 
-        let cover = (payload["cover"] as? String).flatMap { URL(string: $0) }
-            .flatMap { ["http", "https"].contains($0.scheme ?? "") ? $0 : nil }
-        if cover != artworkURL || playbackInfo[MPMediaItemPropertyArtwork] == nil {
-            artworkTask?.cancel()
-            artworkURL = cover
-            playbackInfo[MPMediaItemPropertyArtwork] = fallbackArtwork
-            if let cover = cover {
-                var request = URLRequest(url: cover, timeoutInterval: 10)
-                request.setValue(PipiClient.USER_AGENT, forHTTPHeaderField: "User-Agent")
-                artworkTask = URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
-                    guard let http = response as? HTTPURLResponse, http.statusCode == 200,
-                          let data = data, let image = UIImage(data: data) else { return }
-                    DispatchQueue.main.async {
-                        guard let self = self, self.artworkURL == cover else { return }
-                        self.playbackInfo[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-                        MPNowPlayingInfoCenter.default().nowPlayingInfo = self.playbackInfo
-                    }
-                }
-                artworkTask?.resume()
-            }
-        }
+        playbackInfo[MPMediaItemPropertyArtwork] = appArtwork
         MPNowPlayingInfoCenter.default().nowPlayingInfo = playbackInfo
     }
 
