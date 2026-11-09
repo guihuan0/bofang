@@ -273,12 +273,16 @@
     const marker = html.indexOf('_ROUTER_DATA');
     const data = marker >= 0 ? readEmbeddedJSON(html, html.indexOf('{', marker)) : null;
     const playlist = data?.loaderData?.playlist_page;
-    const tracks = (playlist?.medias || []).map(row => ({
-      title: row.name || row.title,
-      artist: Array.isArray(row.artists || row.artist)
-        ? (row.artists || row.artist).map(a => typeof a === 'string' ? a : a.name || a.artistName).filter(Boolean).join(' / ')
-        : row.artist || '',
-    }));
+    const tracks = (playlist?.medias || []).map(row => {
+      const track = row.entity?.track || row;
+      const artists = track.artists || track.artist || '';
+      return {
+        title: track.name || track.title,
+        artist: Array.isArray(artists)
+          ? artists.map(a => typeof a === 'string' ? a : a?.name || a?.artistName).filter(Boolean).join(' / ')
+          : artists,
+      };
+    });
     return saveImportedPlaylist(playlist?.playlistInfo?.title || '汽水音乐歌单', 'qishui', tracks);
   }
 
