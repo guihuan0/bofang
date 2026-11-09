@@ -9,7 +9,7 @@ final class NativePlayer {
     private var status: NSKeyValueObservation?
     private var ended: NSObjectProtocol?
     private var tick: Any?
-    private var probe: URLSessionDownloadTask?
+    private var probe: URLSessionDataTask?
     private var loader: AudioRangeLoader?
     private var url: URL?
     private var token = 0

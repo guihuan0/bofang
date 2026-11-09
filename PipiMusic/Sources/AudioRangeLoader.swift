@@ -29,18 +29,42 @@ final class AudioRangeLoader: NSObject, AVAssetResourceLoaderDelegate {
         }
     }
 
-    static func probe(_ url: URL, workers: Int, completion: @escaping (AudioRangeLoader?) -> Void) -> URLSessionDownloadTask {
+    private final class Probe: NSObject, URLSessionDataDelegate {
+        var completion: ((HTTPURLResponse?) -> Void)?
+
+        init(_ completion: @escaping (HTTPURLResponse?) -> Void) {
+            self.completion = completion
+        }
+
+        func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse,
+                        completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
+            let callback = completion
+            completion = nil
+            completionHandler(.cancel)
+            callback?(response as? HTTPURLResponse)
+        }
+
+        func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+            completion?(nil)
+            completion = nil
+            session.finishTasksAndInvalidate()
+        }
+    }
+
+    static func probe(_ url: URL, workers: Int, completion: @escaping (AudioRangeLoader?) -> Void) -> URLSessionDataTask {
         var request = URLRequest(url: url, timeoutInterval: 5)
         request.setValue("bytes=0-0", forHTTPHeaderField: "Range")
         request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
         request.setValue(PipiClient.USER_AGENT, forHTTPHeaderField: "User-Agent")
-        return URLSession.shared.downloadTask(with: request) { _, response, error in
-            guard error == nil, let response = response as? HTTPURLResponse, response.statusCode == 206,
+        let delegate = Probe { response in
+            guard let response = response, response.statusCode == 206,
                   let range = response.value(forHTTPHeaderField: "Content-Range"),
                   range.hasPrefix("bytes 0-0/"),
                   let size = Int(range.dropFirst(10)), size > 0 else { completion(nil); return }
             completion(AudioRangeLoader(url: url, workers: workers, size: size, response: response))
         }
+        let session = URLSession(configuration: .ephemeral, delegate: delegate, delegateQueue: nil)
+        return session.dataTask(with: request)
     }
 
     private init(url: URL, workers: Int, size: Int, response: HTTPURLResponse) {
