@@ -23,7 +23,12 @@ final class NativePlayer {
     private var remoteTargets: [(MPRemoteCommand, Any)] = []
     private lazy var artwork: MPMediaItemArtwork? = {
         guard let url = Bridge.nowPlayingIconURL, let image = UIImage(contentsOfFile: url.path) else { return nil }
-        return MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+        let bounds = CGRect(origin: .zero, size: image.size)
+        let rounded = UIGraphicsImageRenderer(size: bounds.size).image { _ in
+            UIBezierPath(roundedRect: bounds, cornerRadius: bounds.width * 0.22).addClip()
+            image.draw(in: bounds)
+        }
+        return MPMediaItemArtwork(boundsSize: rounded.size) { _ in rounded }
     }()
 
     init(emit: @escaping (String, [String: Any]) -> Void) {
