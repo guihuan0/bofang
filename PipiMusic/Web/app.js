@@ -421,7 +421,73 @@
       resetShuffle();
       playQueued(state.index);
     });
-    return row;
+    return withPlayNextSwipe(row, downloadTrack(f));
+  }
+
+  let openSwipeRow = null;
+  function withPlayNextSwipe(row, track) {
+    if (!window.__PIPI_IOS__) return row;
+    const wrapper = document.createElement('div');
+    wrapper.className = 'swipe-song';
+    const action = document.createElement('button');
+    action.type = 'button';
+    action.className = 'play-next-action';
+    action.textContent = '下一首播放';
+    action.hidden = true;
+    row.tabIndex = 0;
+    wrapper.append(action, row);
+
+    function close() {
+      wrapper.classList.remove('swipe-open');
+      action.hidden = true;
+      if (openSwipeRow === close) openSwipeRow = null;
+    }
+    function open() {
+      if (openSwipeRow && openSwipeRow !== close) openSwipeRow();
+      openSwipeRow = close;
+      action.hidden = false;
+      wrapper.classList.add('swipe-open');
+    }
+
+    let start = null;
+    let suppressClick = false;
+    row.addEventListener('touchstart', (event) => {
+      const touch = event.touches.length === 1 ? event.touches[0] : null;
+      start = touch ? { x: touch.clientX, y: touch.clientY } : null;
+      suppressClick = false;
+    }, { passive: true });
+    row.addEventListener('touchcancel', () => { start = null; });
+    row.addEventListener('touchend', (event) => {
+      if (!start || !event.changedTouches.length) return;
+      const x = event.changedTouches[0].clientX - start.x;
+      const y = event.changedTouches[0].clientY - start.y;
+      start = null;
+      if (Math.abs(x) < 45 || Math.abs(x) <= Math.abs(y) * 1.4) return;
+      suppressClick = true;
+      if (x < 0) open();
+      else close();
+    }, { passive: true });
+    row.addEventListener('click', (event) => {
+      if (!suppressClick && action.hidden) return;
+      event.stopImmediatePropagation();
+      if (!suppressClick) close();
+      suppressClick = false;
+    }, true);
+    row.addEventListener('keydown', (event) => {
+      if (event.target !== row) return;
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        open();
+        action.focus();
+      } else if (event.key === 'Enter') {
+        row.click();
+      }
+    });
+    action.addEventListener('click', () => { close(); enqueueNext(track); });
+    action.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' || event.key === 'ArrowRight') { close(); row.focus(); }
+    });
+    return wrapper;
   }
 
   function paintDlPlaying() {
@@ -698,7 +764,7 @@
       playItem(item, q);
     });
 
-    return row;
+    return opts?.playNext ? withPlayNextSwipe(row, item) : row;
   }
 
   function renderList(container, items, opts) {
@@ -854,6 +920,7 @@
         elFavMeta.textContent = state.favs.length ? state.favs.length + ' 首' : '';
         renderList(elFavList, state.favs, {
           queue: state.favs,
+          playNext: true,
           emptyTitle: '还没有收藏',
           emptyHint: '在歌曲右侧点 ♥ 就能收藏',
         });
@@ -1344,6 +1411,30 @@
     if (state.index >= 0) shuffledOrder.unshift(state.index);
   }
 
+  function enqueueNext(track) {
+    const playing = state.queue[state.index];
+    const key = favKey(track);
+    if (playing && favKey(playing) === key) {
+      toast('这首歌正在播放');
+      return;
+    }
+    const shuffled = state.mode === 'shuffle' ? shuffledOrder.map((index) => state.queue[index]) : [];
+    const queue = (state.queue.length ? state.queue : state.favs).filter((item) => favKey(item) !== key);
+    state.index = queue.indexOf(playing);
+    queue.splice(state.index + 1, 0, track);
+    state.queue = queue;
+    nextPreload = null;
+    if (state.mode === 'repeatOne') setPlayMode('sequential');
+    if (state.mode === 'shuffle') {
+      const ordered = shuffled.filter((item) => item && favKey(item) !== key);
+      if (ordered.length === 0) ordered.push(...queue.filter((item) => item !== track));
+      ordered.splice(ordered.indexOf(playing) + 1, 0, track);
+      shuffledOrder = ordered.map((item) => queue.indexOf(item));
+    }
+    renderQueue();
+    toast('已设为下一首');
+  }
+
   function playQueued(index) {
     if (!state.queue[index]) return;
     state.index = index;
@@ -1430,13 +1521,16 @@
   }
 
   paintMode();
-  modeButton.addEventListener('click', () => {
-    const modes = Object.keys(playModes);
-    state.mode = modes[(modes.indexOf(state.mode) + 1) % modes.length];
+  function setPlayMode(mode) {
+    state.mode = mode;
     try { localStorage.setItem(modeKey, state.mode); } catch (_) {}
     if (state.mode === 'shuffle') resetShuffle();
     paintMode();
     renderQueue();
+  }
+  modeButton.addEventListener('click', () => {
+    const modes = Object.keys(playModes);
+    setPlayMode(modes[(modes.indexOf(state.mode) + 1) % modes.length]);
   });
 
   // ---------------------------------------------------------- 歌词
@@ -1695,6 +1789,7 @@
     order.forEach((index) => {
       const track = tracks[index];
       const row = document.createElement('li');
+      row.dataset.queueIndex = index;
       const button = document.createElement('button');
       button.type = 'button';
       button.textContent = [track.title || track.raw, track.artist].filter(Boolean).join(' · ');
@@ -1705,12 +1800,93 @@
         queueTracks.querySelector('[aria-current]')?.focus({ preventScroll: true });
       });
       row.appendChild(button);
+      if (tracks.length > 1) {
+        const handle = document.createElement('button');
+        handle.type = 'button';
+        handle.className = 'queue-handle';
+        handle.setAttribute('aria-label', '调整「' + (track.title || track.raw) + '」的顺序，键盘使用上下方向键');
+        handle.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h12M6 12h12M6 17h12"/></svg>';
+        handle.addEventListener('pointerdown', (event) => beginQueueDrag(event, row, tracks, order));
+        handle.addEventListener('keydown', (event) => {
+          const direction = event.key === 'ArrowUp' ? -1 : event.key === 'ArrowDown' ? 1 : 0;
+          if (!direction) return;
+          event.preventDefault();
+          const to = order[order.indexOf(index) + direction];
+          if (to === undefined) return;
+          const moved = moveQueueTrack(tracks, order, index, to);
+          queueTracks.querySelector('[data-queue-index="' + moved + '"] .queue-handle')?.focus({ preventScroll: true });
+        });
+        row.appendChild(handle);
+      }
       rows.appendChild(row);
     });
     queueTracks.textContent = '';
     queueTracks.appendChild(rows);
     queueEmpty.hidden = order.length > 0;
     playFavorites.disabled = !state.favs.length;
+  }
+
+  function moveQueueTrack(tracks, order, from, to) {
+    const current = state.queue[state.index];
+    const sorted = order.map((index) => tracks[index]);
+    const destination = order.indexOf(to);
+    sorted.splice(order.indexOf(from), 1);
+    sorted.splice(destination, 0, tracks[from]);
+    state.queue = sorted;
+    state.index = sorted.indexOf(current);
+    nextPreload = null;
+    if (state.mode === 'shuffle' || state.mode === 'repeatOne') setPlayMode('sequential');
+    else renderQueue();
+    return destination;
+  }
+
+  function beginQueueDrag(event, row, tracks, order) {
+    if (!event.isPrimary || event.button !== 0) return;
+    event.preventDefault();
+    const handle = event.currentTarget;
+    const pointer = event.pointerId;
+    const from = Number(row.dataset.queueIndex);
+    let target = row;
+    let y = event.clientY;
+    let frame;
+    handle.setPointerCapture(pointer);
+    row.classList.add('queue-dragging');
+    const move = (e) => { if (e.pointerId === pointer) y = e.clientY; };
+    function update() {
+      if (!row.isConnected || playerQueue.hidden) {
+        finish({ pointerId: pointer, type: 'pointercancel' });
+        return;
+      }
+      const bounds = queueTracks.getBoundingClientRect();
+      if (y < bounds.top + 24) queueTracks.scrollTop -= 8;
+      else if (y > bounds.bottom - 24) queueTracks.scrollTop += 8;
+      const hit = document.elementFromPoint(bounds.left + bounds.width / 2,
+        Math.max(bounds.top + 1, Math.min(y, bounds.bottom - 1)))?.closest('[data-queue-index]');
+      if (hit && queueTracks.contains(hit) && target !== hit) {
+        target.classList.remove('queue-drop-target');
+        target = hit;
+        if (target !== row) target.classList.add('queue-drop-target');
+      }
+      frame = requestAnimationFrame(update);
+    }
+    function finish(e) {
+      if (e.pointerId !== pointer) return;
+      cancelAnimationFrame(frame);
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', finish);
+      handle.removeEventListener('pointercancel', finish);
+      handle.removeEventListener('lostpointercapture', finish);
+      row.classList.remove('queue-dragging');
+      target.classList.remove('queue-drop-target');
+      if (e.type === 'pointerup' && target !== row && row.isConnected) {
+        moveQueueTrack(tracks, order, from, Number(target.dataset.queueIndex));
+      }
+    }
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', finish);
+    handle.addEventListener('pointercancel', finish);
+    handle.addEventListener('lostpointercapture', finish);
+    frame = requestAnimationFrame(update);
   }
 
   function setQueueVisible(expanded, focus = true) {
@@ -1843,7 +2019,8 @@
   // ---------------------------------------------------------- 键盘
   window.addEventListener('keydown', (e) => {
     const tag = (e.target.tagName || '').toLowerCase();
-    if (tag === 'input' || tag === 'textarea') return;
+    if (e.defaultPrevented || ['input', 'textarea', 'select'].includes(tag)) return;
+    if (e.code === 'Space' && tag === 'button') return;
 
     if (e.code === 'Space') {
       e.preventDefault();

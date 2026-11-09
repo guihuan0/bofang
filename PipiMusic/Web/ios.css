@@ -1084,3 +1084,50 @@ body.ios .download-cover {
 body.ios.player-expanded .turntable,
 body.ios.player-expanded .disc,
 body.ios.player-expanded .player-heading { touch-action: none; }
+
+.swipe-song {
+  --swipe-action-width: 112px;
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+}
+.swipe-song > .song, .swipe-song > .dl-row {
+  position: relative;
+  background: var(--bg);
+  touch-action: pan-y;
+  transition: transform .18s ease-out;
+}
+.swipe-song > .playing { background: var(--panel); }
+.swipe-song.swipe-open > .song, .swipe-song.swipe-open > .dl-row {
+  transform: translateX(calc(-1 * var(--swipe-action-width)));
+}
+.play-next-action {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: var(--swipe-action-width);
+  min-height: 44px;
+  border: 0;
+  background: var(--acc);
+  color: var(--on-accent);
+  font: inherit;
+  font-weight: 700;
+}
+#queueTracks > li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+#queueTracks .queue-handle {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  padding: 0;
+  color: var(--dim);
+  touch-action: none;
+  cursor: grab;
+}
+#queueTracks .queue-dragging { opacity: .65; }
+#queueTracks .queue-drop-target { box-shadow: inset 0 2px var(--acc); }
+@media (prefers-reduced-motion: reduce) {
+  .swipe-song > .song, .swipe-song > .dl-row { transition: none; }
+}
