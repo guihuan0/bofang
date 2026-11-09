@@ -221,8 +221,8 @@
       return;
     }
     dlActive[key] = true;
-    elSideTip.textContent = '正在从 33ve 获取下载链接…';
-    toast('正在从 33ve 获取下载链接…');
+    elSideTip.textContent = '正在获取下载链接…';
+    toast('正在获取下载链接…');
 
     postJSON('/api/download', {
       id: item.id,
@@ -237,7 +237,7 @@
           elSideTip.textContent = '下载失败';
           return;
         }
-        toast('已开始从 33ve 下载');
+        toast(res.lossless ? '正在下载无损 FLAC' : '正在从 33ve 下载');
         pollDownload(res.task, key);
       })
       .catch((e) => {
@@ -334,7 +334,7 @@
       const e = document.createElement('div');
       e.className = 'pl-empty';
       e.innerHTML = '<b>还没有下载过歌曲</b>' +
-        '在搜索结果或播放条上点 ↓，即可从 33ve 下载';
+        '点歌曲旁的下载按钮，优先下载可用的无损 FLAC';
       elDlList.appendChild(e);
       return;
     }
@@ -603,7 +603,7 @@
 
     const down = document.createElement('button');
     down.className = 'icon-btn dl';
-    down.title = '从 33ve 下载';
+    down.title = '下载歌曲';
     down.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg>';
     down.addEventListener('click', (e) => {
       e.stopPropagation();

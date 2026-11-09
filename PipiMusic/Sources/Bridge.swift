@@ -164,7 +164,8 @@ final class Bridge: NSObject, WKScriptMessageHandler {
                 let source = argStr(args, 3)
                 let workers = workerCount(args, index: 4, fallback: 4, maximum: 16)
                 let started = try prepareDownload(sid: sid, title: title,
-                                                  artist: artist, source: source, workers: workers)
+                                                  artist: artist, source: source, workers: workers,
+                                                  password: argStr(args, 5))
                 reply(reqId, ok: true, started)
 
             case "downloads":
@@ -284,19 +285,24 @@ final class Bridge: NSObject, WKScriptMessageHandler {
 
     private func resolveAudio(sid: String, title: String, artist: String,
                               source: String, candidate: String) throws -> PlayResult {
-        let client = ClientPool.shared.client(candidate)
-        if candidate == source, !sid.isEmpty { return try client.playURL(id: sid) }
+        let id = try matchingSongID(sid: sid, title: title, artist: artist, source: source, candidate: candidate)
+        return try ClientPool.shared.client(candidate).playURL(id: id)
+    }
+
+    private func matchingSongID(sid: String, title: String, artist: String,
+                                source: String, candidate: String) throws -> String {
+        if candidate == source, !sid.isEmpty { return sid }
         let titleKey = title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let artistKey = artist.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !titleKey.isEmpty, !artistKey.isEmpty else {
             throw PipiError.message("缺少歌名或歌手，无法匹配音源")
         }
-        let songs = try client.search("\(title) \(artist)", limit: 8)
+        let songs = try ClientPool.shared.client(candidate).search("\(title) \(artist)", limit: 8)
         guard let match = songs.first(where: {
             $0.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == titleKey &&
             $0.artist.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == artistKey
         }) else { throw PipiError.message("该音源没有找到同一首歌") }
-        return try client.playURL(id: match.id)
+        return match.id
     }
 
     private func resolvePlayback(sid: String, title: String, artist: String, source: String,
@@ -359,7 +365,20 @@ final class Bridge: NSObject, WKScriptMessageHandler {
     private var dlJobs: [String: [String: Any]] = [:]
 
     private func prepareDownload(sid: String, title: String, artist: String,
-                                 source: String, workers: Int) throws -> [String: Any] {
+                                 source: String, workers: Int, password: String) throws -> [String: Any] {
+        let stem = artist.isEmpty ? title : "\(artist) - \(title)"
+        let taskId = UUID().uuidString
+        let losslessSource = source == "aac" ? "aac" : "vipp3"
+        if let candidate = SoundSource.find(losslessSource),
+           let id = try? matchingSongID(sid: sid, title: title, artist: artist,
+                                        source: source, candidate: losslessSource),
+           let url = LosslessDownload.resolve(source: candidate, id: id,
+                                              password: losslessSource == "vipp3" ? password : "") {
+            let saved = try beginDownload(taskId: taskId, url: url.absoluteString,
+                                          name: safeName(stem) + ".flac", workers: workers)
+            return ["ok": true, "task": taskId, "source": losslessSource, "name": saved, "lossless": true]
+        }
+
         let audio: PlayResult
         do {
             audio = try resolveAudio(sid: sid, title: title, artist: artist,
@@ -369,10 +388,8 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         }
         guard audio.ok else { return ["ok": false, "error": "33ve 下载失败：\(audio.error)"] }
 
-        let stem = artist.isEmpty ? title : "\(artist) - \(title)"
         let pathExt = URL(string: audio.url)?.pathExtension.lowercased() ?? ""
         let ext = ["mp3", "m4a", "flac", "wav", "aac", "ogg"].contains(pathExt) ? pathExt : "mp3"
-        let taskId = UUID().uuidString
         let saved = try beginDownload(taskId: taskId, url: audio.url,
                                       name: safeName(stem) + "." + ext, workers: workers)
         return ["ok": true, "task": taskId, "source": "33ve", "name": saved]
@@ -420,6 +437,13 @@ final class Bridge: NSObject, WKScriptMessageHandler {
                 let tmp = try result.get()
                 let size = try tmp.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
                 guard size > 0 else { throw PipiError.message("下载文件为空") }
+                if dest.pathExtension.lowercased() == "flac" {
+                    let handle = try FileHandle(forReadingFrom: tmp)
+                    defer { try? handle.close() }
+                    guard try handle.read(upToCount: 4) == Data([0x66, 0x4c, 0x61, 0x43]) else {
+                        throw PipiError.message("下载内容不是 FLAC")
+                    }
+                }
                 try FileManager.default.moveItem(at: tmp, to: dest)
                 self.dlJobs[taskId] = ["status": "done", "done": size, "total": size,
                                        "percent": 100.0, "name": dest.lastPathComponent, "error": ""]
