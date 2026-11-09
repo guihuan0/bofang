@@ -1176,3 +1176,17 @@ body.ios .queue-floating .queue-handle { padding: 0; text-align: center; color: 
     to { opacity: 1; transform: none; }
   }
 }
+
+.now-details { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+.now-details .now-artist { min-width: 0; }
+.now-format {
+  flex: none;
+  padding: 1px 5px;
+  border: 1px solid var(--line-2);
+  border-radius: 5px;
+  color: var(--dim);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+body.ios.player-expanded .now-format { font-size: 11px; }

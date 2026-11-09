@@ -25,6 +25,7 @@
   const elNowTitle  = $('#nowTitle');
   const elNowArtist = $('#nowArtist');
   const elNowCover  = $('#nowCover');
+  const elNowFormat = $('#nowFormat');
   const elFavBtn    = $('#favBtn');
   const elSeekBar   = $('#seekBar');
   const elSeekFill  = $('#seekFill');
@@ -517,6 +518,7 @@
     loadedTrack = track;
     elDlBtn.hidden = true;
     resetPlaybackProgress();
+    setPlaybackFormat(track.local);
 
     elNowTitle.textContent = state.current.title;
     elNowArtist.textContent = state.current.artist;
@@ -1300,6 +1302,7 @@
         syncFavBtn();
 
         loadedTrack = track;
+        setPlaybackFormat(res.stream);
         audio.src = res.stream;
         audio.play().catch(() => {});
 
@@ -1605,7 +1608,17 @@
   });
 
   // ---------------------------------------------------------- 音频事件
+  function setPlaybackFormat(value) {
+    const source = String(value || '');
+    const path = /^https?:\/\//i.test(source) ? source.split(/[?#]/, 1)[0] : source;
+    const ext = path.match(/\.([a-z0-9]+)$/i)?.[1].toUpperCase();
+    const label = ['MP3', 'FLAC', 'M4A', 'AAC', 'WAV', 'OGG', 'OPUS', 'ALAC'].includes(ext) ? ext : '';
+    elNowFormat.textContent = label;
+    elNowFormat.hidden = !label;
+  }
+
   function resetPlaybackProgress() {
+    setPlaybackFormat('');
     $('#playbar').style.setProperty('--play-progress', '0%');
     elSeekFill.style.width = '0%';
     elSeekKnob.style.left = '0%';
@@ -1730,6 +1743,7 @@
       .then((res) => {
         if (state.current !== track) return;
         if (!res.ok) throw new Error(res.error || '重取失败');
+        setPlaybackFormat(res.stream);
         audio.src = res.stream;
         const resume = () => {
           if (state.current !== track) return;
