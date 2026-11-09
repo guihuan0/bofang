@@ -164,8 +164,7 @@ final class Bridge: NSObject, WKScriptMessageHandler {
                 let source = argStr(args, 3)
                 let workers = workerCount(args, index: 4, fallback: 4, maximum: 16)
                 let started = try prepareDownload(sid: sid, title: title,
-                                                  artist: artist, source: source, workers: workers,
-                                                  password: argStr(args, 5))
+                                                  artist: artist, source: source, workers: workers)
                 reply(reqId, ok: true, started)
 
             case "downloads":
@@ -365,15 +364,14 @@ final class Bridge: NSObject, WKScriptMessageHandler {
     private var dlJobs: [String: [String: Any]] = [:]
 
     private func prepareDownload(sid: String, title: String, artist: String,
-                                 source: String, workers: Int, password: String) throws -> [String: Any] {
+                                 source: String, workers: Int) throws -> [String: Any] {
         let stem = artist.isEmpty ? title : "\(artist) - \(title)"
         let taskId = UUID().uuidString
         let losslessSource = source == "aac" ? "aac" : "vipp3"
         if let candidate = SoundSource.find(losslessSource),
            let id = try? matchingSongID(sid: sid, title: title, artist: artist,
                                         source: source, candidate: losslessSource),
-           let url = LosslessDownload.resolve(source: candidate, id: id,
-                                              password: losslessSource == "vipp3" ? password : "") {
+           let url = LosslessDownload.resolve(source: candidate, id: id) {
             let saved = try beginDownload(taskId: taskId, url: url.absoluteString,
                                           name: safeName(stem) + ".flac", workers: workers)
             return ["ok": true, "task": taskId, "source": losslessSource, "name": saved, "lossless": true]

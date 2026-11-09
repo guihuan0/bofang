@@ -295,8 +295,7 @@
     // --- 下载 ---
     if (path === '/api/download') {
       return call('download', body.id || '', body.title || '',
-                  body.artist || '', body.source || 'vipp3', lsGet('downloadWorkers', 4),
-                  document.getElementById('losslessPassword')?.value.trim() || '');
+                  body.artist || '', body.source || 'vipp3', lsGet('downloadWorkers', 4));
     }
 
     if (path === '/api/download/status') {

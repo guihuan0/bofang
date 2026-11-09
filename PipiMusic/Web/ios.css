@@ -1063,14 +1063,3 @@ body.ios .toast.err { color: var(--pink); }
     box-shadow: 0 16px 24px #080c125c;
   }
 }
-
-body.ios #losslessPassword {
-  width: 7rem;
-  min-height: 44px;
-  padding: 0 8px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--bg);
-  color: var(--text);
-  font-size: 16px;
-}

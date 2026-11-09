@@ -1,7 +1,25 @@
 import Foundation
 
 enum LosslessDownload {
-    static func resolve(source: SoundSource, id: String, password: String) -> URL? {
+    private final class Redirects: NSObject, URLSessionTaskDelegate {
+        func urlSession(_ session: URLSession, task: URLSessionTask,
+                        willPerformHTTPRedirection response: HTTPURLResponse,
+                        newRequest request: URLRequest,
+                        completionHandler: @escaping (URLRequest?) -> Void) {
+            guard let url = request.url, url.scheme == "https", let host = url.host,
+                  host == "kuwo.cn" || host.hasSuffix(".kuwo.cn") else {
+                completionHandler(nil)
+                return
+            }
+            var clean = URLRequest(url: url, timeoutInterval: 5)
+            clean.setValue("bytes=0-15", forHTTPHeaderField: "Range")
+            clean.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
+            clean.setValue(PipiClient.USER_AGENT, forHTTPHeaderField: "User-Agent")
+            completionHandler(clean)
+        }
+    }
+
+    static func resolve(source: SoundSource, id: String) -> URL? {
         guard source.id == "vipp3" || source.id == "aac", !id.isEmpty,
               var parts = URLComponents(string: source.base + "/plug/down.php") else { return nil }
         parts.queryItems = [
@@ -12,25 +30,11 @@ enum LosslessDownload {
         guard let endpoint = parts.url else { return nil }
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForResource = 10
-        let session = URLSession(configuration: config)
+        config.httpShouldSetCookies = false
+        let session = URLSession(configuration: config, delegate: Redirects(), delegateQueue: nil)
         defer { session.finishTasksAndInvalidate() }
-        if !password.isEmpty {
-            guard let login = URL(string: source.base + "/plug/login.php") else { return nil }
-            var request = URLRequest(url: login, timeoutInterval: 5)
-            request.httpMethod = "POST"
-            request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-            request.setValue(source.base, forHTTPHeaderField: "Origin")
-            request.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
-            request.setValue(PipiClient.USER_AGENT, forHTTPHeaderField: "User-Agent")
-            request.setValue(source.base + "/down.php?ac=music&id=" + id, forHTTPHeaderField: "Referer")
-            var form = URLComponents()
-            form.queryItems = [URLQueryItem(name: "lkpwd", value: password)]
-            request.httpBody = form.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B").data(using: .utf8)
-            guard let (data, _) = fetch(request, session: session),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  (json["code"] as? NSNumber)?.intValue == 1 else { return nil }
-        }
         var request = URLRequest(url: endpoint, timeoutInterval: 5)
+        request.setValue("down_mima=ok", forHTTPHeaderField: "Cookie")
         request.setValue("bytes=0-15", forHTTPHeaderField: "Range")
         request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
         request.setValue(PipiClient.USER_AGENT, forHTTPHeaderField: "User-Agent")
