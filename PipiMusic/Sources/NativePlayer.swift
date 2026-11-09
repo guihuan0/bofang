@@ -197,6 +197,26 @@ final class NativePlayer {
         publish()
     }
 
+    func stop(token: Int) {
+        self.token = token
+        wantsPlay = false
+        probe?.cancel()
+        probe = nil
+        prepareTask?.cancel()
+        prepareID = UUID()
+        prepared = nil
+        status = nil
+        if let ended = ended { NotificationCenter.default.removeObserver(ended) }
+        ended = nil
+        player.pause()
+        player.replaceCurrentItem(with: nil)
+        loader = nil
+        url = nil
+        title = ""
+        artist = ""
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+    }
+
     func seek(_ time: Double) {
         guard time.isFinite else { return }
         let destination = max(0, duration > 0 ? min(time, duration) : time)

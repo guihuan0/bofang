@@ -68,6 +68,7 @@ final class Bridge: NSObject, WKScriptMessageHandler {
                 player.prepare(url, workers: min(16, max(1, item["workers"] as? Int ?? 3)))
             }
         case "audioPause": player.pause()
+        case "audioStop": player.stop(token: value?.intValue ?? 0)
         case "audioSeek": player.seek(value?.doubleValue ?? 0)
         case "audioLoop": player.setLoop(value?.boolValue ?? false)
         case "audioVolume": player.setVolume(value?.floatValue ?? 1)

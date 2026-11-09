@@ -63,6 +63,10 @@
   let shuffledOrder = [];
   let loadedTrack = null;
   let nextPreload = null;
+  let loadingTrack = null;
+
+  document.addEventListener('pointerdown', () => document.body.classList.add('pointer-focus'), true);
+  document.addEventListener('keydown', () => document.body.classList.remove('pointer-focus'), true);
 
   function playbackWorkers() {
     try { return Number(localStorage.getItem('pipi_playWorkers')) || 3; } catch (_) { return 3; }
@@ -101,6 +105,10 @@
         duration = NaN;
         paused = true;
         const requestToken = ++token;
+        if (!url) {
+          send('audioStop', requestToken);
+          return;
+        }
         const workers = playbackWorkers();
         const track = state.current;
         call('audioLoad', { token, url, workers, local: track.local || '',
@@ -215,6 +223,7 @@
   }
 
   function downloadSong(item) {
+    if (item?.local || String(item?.id || '').startsWith('local:')) return;
     if (!item || !item.title) {
       toast('不知道要下载哪首', true);
       return;
@@ -293,6 +302,7 @@
 
   // 播放条上的下载按钮
   const elDlBtn = $('#dlBtn');
+  elDlBtn.hidden = true;
   if (elDlBtn) {
     elDlBtn.addEventListener('click', () => {
       if (!state.current) {
@@ -436,8 +446,11 @@
 
   function playLocal(track) {
     nextPreload = null;
+    loadingTrack = null;
     state.current = track;
     loadedTrack = track;
+    elDlBtn.hidden = true;
+    resetPlaybackProgress();
 
     elNowTitle.textContent = state.current.title;
     elNowArtist.textContent = state.current.artist;
@@ -521,7 +534,26 @@
           resetShuffle();
           renderQueue();
         }
-        if (state.current?.local === f.name) audio.pause();
+        if (state.current?.local === f.name) {
+          audio.pause();
+          if (window.__pipiNativePlayback) audio.src = '';
+          else { audio.removeAttribute('src'); audio.load(); }
+          loadedTrack = null;
+          state.current = null;
+          state.index = -1;
+          nextPreload = null;
+          resetShuffle();
+          elDlBtn.hidden = true;
+          elNowTitle.textContent = '未播放';
+          elNowArtist.textContent = '选一首开始';
+          elNowCover.removeAttribute('src');
+          elNowCover.style.display = 'none';
+          showLyricsMessage('播放歌曲后显示歌词');
+          resetPlaybackProgress();
+          syncFavBtn();
+          paintPlaying();
+          renderQueue();
+        }
         loadDownloads();
       })
       .catch((error) => toast('删除失败：' + error.message, true));
@@ -1158,6 +1190,10 @@
       source: item.source || currentSource(),
     };
     const track = state.current;
+    loadingTrack = track;
+    audio.pause();
+    elDlBtn.hidden = false;
+    resetPlaybackProgress();
     renderQueue();
 
     elNowTitle.textContent = state.current.title;
@@ -1223,6 +1259,9 @@
         showLyricsMessage('歌词加载失败');
         toast('播放失败：' + e.message, true);
         elSideTip.textContent = '播放失败';
+      })
+      .finally(() => {
+        if (loadingTrack === track) loadingTrack = null;
       });
   }
 
@@ -1345,7 +1384,16 @@
   }
 
   $('#btnPlay').addEventListener('click', () => {
+    if (loadingTrack) return;
+    if (state.current && state.current !== loadedTrack) {
+      playItem(state.queue[state.index] || state.current);
+      return;
+    }
     if (!audio.src) {
+      if (state.queue.length) {
+        playQueued(0);
+        return;
+      }
       const tracks = state.favs.length ? state.favs : lastSearchResults;
       if (tracks.length) playItem(tracks[0], tracks);
       else toast('先搜一首歌吧');
@@ -1470,6 +1518,14 @@
   });
 
   // ---------------------------------------------------------- 音频事件
+  function resetPlaybackProgress() {
+    $('#playbar').style.setProperty('--play-progress', '0%');
+    elSeekFill.style.width = '0%';
+    elSeekKnob.style.left = '0%';
+    elTCur.textContent = '0:00';
+    elTDur.textContent = '0:00';
+  }
+
   const mediaSession = window.__pipiNativePlayback ? null : navigator.mediaSession;
   if (mediaSession) {
     const actions = {
@@ -1503,6 +1559,7 @@
   }
 
   audio.addEventListener('timeupdate', () => {
+    if (!state.current || state.current !== loadedTrack) return;
     const d = audio.duration || 0;
     const c = audio.currentTime || 0;
     const p = d ? (c / d) * 100 : 0;
@@ -1516,6 +1573,7 @@
   });
 
   audio.addEventListener('loadedmetadata', () => {
+    if (!state.current || state.current !== loadedTrack) return;
     elTDur.textContent = fmtTime(audio.duration || 0);
     if (!audio.paused) updateSystemPlayback(true);
   });
@@ -1548,7 +1606,13 @@
   let repairing = 0;
   audio.addEventListener('error', () => {
     const track = state.current;
-    if (!audio.src || !track || track.local || track !== loadedTrack) return;
+    if (!audio.src || !track || track !== loadedTrack) return;
+    if (track.local) {
+      audio.pause();
+      elSideTip.textContent = '本地文件播放失败';
+      toast('无法播放本地文件，文件可能已删除或损坏', true);
+      return;
+    }
     if (repairing >= 2) {
       elSideTip.textContent = '播放出错';
       document.body.classList.remove('playing', 'spinning');

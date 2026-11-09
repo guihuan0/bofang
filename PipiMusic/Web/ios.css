@@ -594,6 +594,7 @@ body.ios {
 
 body.ios::before { display: none; }
 body.ios :focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+body.ios.pointer-focus .playbar :focus-visible { outline: none; }
 body.ios input { caret-color: var(--acc); }
 body.ios .main { padding: 0; }
 
