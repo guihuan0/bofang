@@ -538,9 +538,6 @@
       audio.src = '/local/' + encodeURIComponent(track.local);
     }
     audio.play().catch(() => {});
-    document.body.classList.add('playing');
-    document.body.classList.add('spinning');
-    elMiniEq.classList.add('on');
 
     paintPlaying();
     renderQueue();
@@ -1305,10 +1302,6 @@
         loadedTrack = track;
         audio.src = res.stream;
         audio.play().catch(() => {});
-        document.body.classList.add('playing');
-        document.body.classList.add('spinning');
-        elMiniEq.classList.add('on');
-        elSideTip.textContent = '正在播放';
 
         paintPlaying();
         postJSON('/api/lyric', { lkid: res.lkid, source: res.source, lrc: res.lrc })
@@ -1673,11 +1666,19 @@
   });
   audio.addEventListener('seeked', () => updateSystemPlayback(!audio.paused));
 
-  audio.addEventListener('play', () => {
+  audio.addEventListener(window.__pipiNativePlayback ? 'play' : 'playing', () => {
     updateSystemPlayback(true);
     document.body.classList.add('playing', 'spinning');
     elMiniEq.classList.add('on');
     elSideTip.textContent = '正在播放';
+  });
+
+  audio.addEventListener('waiting', () => {
+    if (state.current !== loadedTrack || audio.paused) return;
+    document.body.classList.remove('spinning');
+    document.body.classList.add('playing');
+    elMiniEq.classList.remove('on');
+    elSideTip.textContent = '正在缓冲…';
   });
 
   audio.addEventListener('pause', () => {

@@ -1,4 +1,4 @@
-﻿/* ============================================================
+/* ============================================================
    iOS / 窄屏适配
    iPhone 上三栏摆不开：左栏降成底部 tab，歌词变成上滑抽屉。
    ============================================================ */
@@ -931,7 +931,7 @@ body.ios.player-expanded .playbar .disc img {
   box-shadow: 0 0 0 4px #34383b;
   animation: none;
 }
-body.ios.player-expanded.playing .disc img { animation: spin 16s linear infinite; }
+body.ios.player-expanded.spinning .disc img { animation: spin 16s linear infinite; }
 
 body.ios.player-expanded #playerLyrics:not([hidden]) ~ .turntable,
 body.ios.player-expanded #playerQueue:not([hidden]) ~ .turntable { visibility: hidden; }
@@ -1005,7 +1005,7 @@ body.ios.player-expanded .bar-fill,
 body.ios.player-expanded .bar-knob { background: var(--text); box-shadow: none; }
 
 @media (prefers-reduced-motion: reduce) {
-  body.ios.player-expanded.playing .disc img { animation: none; }
+  body.ios.player-expanded.spinning .disc img { animation: none; }
 }
 
 @media (min-width: 620px) and (max-height: 560px) {

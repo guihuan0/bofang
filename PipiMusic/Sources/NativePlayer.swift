@@ -7,6 +7,8 @@ final class NativePlayer {
     private let player = AVPlayer()
     private let emit: (String, [String: Any]) -> Void
     private var status: NSKeyValueObservation?
+    private var transport: NSKeyValueObservation?
+    private var startupFallback: DispatchWorkItem?
     private var ended: NSObjectProtocol?
     private var tick: Any?
     private var probe: URLSessionDataTask?
@@ -38,6 +40,18 @@ final class NativePlayer {
 
     init(emit: @escaping (String, [String: Any]) -> Void) {
         self.emit = emit
+        transport = player.observe(\.timeControlStatus, options: [.new]) { [weak self] _, _ in
+            DispatchQueue.main.async {
+                guard let self = self, self.wantsPlay else { return }
+                if self.player.timeControlStatus == .playing {
+                    self.startupFallback?.cancel()
+                    self.send("play")
+                    self.publish()
+                } else if self.player.timeControlStatus == .waitingToPlayAtSpecifiedRate {
+                    self.send("waiting")
+                }
+            }
+        }
         tick = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 4), queue: .main) { [weak self] _ in
             self?.send("timeupdate")
         }
@@ -75,6 +89,7 @@ final class NativePlayer {
     }
 
     func load(_ url: URL, token: Int, title: String, artist: String, workers: Int) {
+        startupFallback?.cancel()
         probe?.cancel()
         probe = nil
         status = nil
@@ -178,19 +193,43 @@ final class NativePlayer {
                 self.publish()
             }
         }
-        if wantsPlay, resumeAt == 0 { player.play() }
+        if wantsPlay, resumeAt == 0 {
+            player.play()
+            monitorRangeStartup()
+        }
+    }
+
+    private func monitorRangeStartup() {
+        startupFallback?.cancel()
+        guard loader != nil, let url = url else { return }
+        let currentToken = token
+        let fallback = DispatchWorkItem { [weak self] in
+            guard let self = self, self.token == currentToken, self.wantsPlay,
+                  self.loader != nil, self.player.timeControlStatus != .playing else { return }
+            self.install(url, loader: nil, resumeAt: self.position)
+        }
+        startupFallback = fallback
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: fallback)
     }
 
     func play() {
         guard url != nil else { return }
+        do {
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            NSLog("[pipi] could not activate audio session: \(error)")
+        }
         if !wantsPlay, duration > 0, position >= duration - 0.05 { seek(0) }
         wantsPlay = true
         player.play()
-        send("play")
+        if player.timeControlStatus == .playing { send("play") }
+        else { send("waiting") }
+        monitorRangeStartup()
         publish()
     }
 
     func pause() {
+        startupFallback?.cancel()
         wantsPlay = false
         player.pause()
         send("pause")
@@ -198,6 +237,7 @@ final class NativePlayer {
     }
 
     func stop(token: Int) {
+        startupFallback?.cancel()
         self.token = token
         wantsPlay = false
         probe?.cancel()
@@ -255,7 +295,7 @@ final class NativePlayer {
             MPMediaItemPropertyTitle: title, MPMediaItemPropertyArtist: artist,
             MPMediaItemPropertyPlaybackDuration: duration,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: position,
-            MPNowPlayingInfoPropertyPlaybackRate: wantsPlay ? 1.0 : 0.0,
+            MPNowPlayingInfoPropertyPlaybackRate: player.timeControlStatus == .playing ? Double(player.rate) : 0.0,
         ]
         info[MPMediaItemPropertyArtwork] = artwork
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
