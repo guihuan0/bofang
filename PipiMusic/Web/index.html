@@ -171,25 +171,26 @@
 
     <!-- 歌单导入视图 -->
     <section class="view" id="view-playlist">
-      <div class="list-head">
-        <h2>我的歌单</h2>
-        <span id="plMeta"></span>
-      </div>
-
-      <div class="playlists" id="plList"></div>
-
-      <div class="import-box">
-        <textarea id="importText" spellcheck="false" aria-label="歌单分享链接或歌曲列表"
-          placeholder="粘贴公开歌单分享链接，或每行填写一首「歌名 - 歌手」"></textarea>
-        <div class="import-bar">
-          <div class="import-tips">
-            <span class="tip-chip dim">QQ音乐 · 酷狗 · 汽水 · 酷我 · 文本</span>
-          </div>
-          <button id="importBtn" class="primary-btn">导入歌单</button>
+      <div id="plDirectory">
+        <div class="list-head">
+          <h2>我的歌单</h2>
+          <span id="plMeta"></span>
+          <button type="button" id="plImportToggle" class="primary-btn" aria-expanded="false" aria-controls="plImportPanel">导入歌单</button>
         </div>
-        <div class="import-err" id="importErr" hidden></div>
+        <div class="import-box" id="plImportPanel" hidden>
+          <textarea id="importText" spellcheck="false" aria-label="歌单分享链接或歌曲列表"
+            placeholder="粘贴公开歌单分享链接，或每行填写一首「歌名 - 歌手」"></textarea>
+          <div class="import-bar">
+            <div class="import-tips">
+              <span class="tip-chip dim">QQ音乐 · 酷狗 · 汽水 · 酷我 · 文本</span>
+            </div>
+            <button id="importBtn" class="primary-btn">导入歌单</button>
+          </div>
+          <div class="import-err" id="importErr" hidden></div>
+        </div>
+        <div class="playlists" id="plList"></div>
       </div>
-
+      <div id="plDetail" hidden></div>
     </section>
 
     <!-- 已下载 -->

@@ -665,7 +665,10 @@
   }
 
   $$('.nav-item').forEach((b) => {
-    b.addEventListener('click', () => switchView(b.dataset.view));
+    b.addEventListener('click', () => {
+      if (b.dataset.view === 'playlist' && openedPlaylist) closePlaylist(false);
+      switchView(b.dataset.view);
+    });
   });
 
   // ---------------------------------------------------------- 列表渲染
@@ -1015,136 +1018,163 @@
     qq: 'QQ音乐', kugou: '酷狗', qishui: '汽水', kuwo: '酷我', text: '文本',
   };
 
-  function loadPlaylists(openId) {
+  const plDirectory = $('#plDirectory');
+  const plDetail = $('#plDetail');
+  const plImportPanel = $('#plImportPanel');
+  const plImportToggle = $('#plImportToggle');
+  let openedPlaylist = '';
+  let playlistScroll = 0;
+
+  function togglePlaylistImport(open, focus = true) {
+    plImportPanel.hidden = !open;
+    plImportToggle.setAttribute('aria-expanded', String(open));
+    plImportToggle.textContent = open ? '收起导入' : '导入歌单';
+    if (open && focus) elImportText.focus();
+  }
+
+  plImportToggle.addEventListener('click', () => togglePlaylistImport(plImportPanel.hidden));
+
+  function loadPlaylists(focusId) {
     return api('/api/playlists')
       .then((res) => {
         const items = res.items || [];
         elPlCount.textContent = items.length;
         elPlMeta.textContent = items.length ? items.length + ' 个歌单' : '';
         renderPlaylists(items);
-        if (openId) {
-          const card = [...elPlList.children].find((item) => item.dataset.pid === openId);
-          if (card) {
-            card.classList.add('open');
-            card.scrollIntoView({ block: 'nearest' });
-          }
+        const active = items.find((item) => item.id === openedPlaylist);
+        if (active) showPlaylist(active);
+        else if (openedPlaylist) closePlaylist(false);
+        if (focusId && state.view === 'playlist' && !openedPlaylist) {
+          const row = [...elPlList.children].find((item) => item.dataset.pid === focusId);
+          row?.focus();
         }
       })
       .catch(() => {});
   }
 
   function renderPlaylists(items) {
-    elPlList.innerHTML = '';
+    elPlList.replaceChildren();
     if (!items.length) {
-      const e = document.createElement('div');
-      e.className = 'pl-empty';
-      e.innerHTML = '<b>还没有导入歌单</b>' +
-        '把 QQ音乐 / 酷狗 / 汽水 / 酷我 的歌单链接粘到下方，或者直接贴歌曲列表';
-      elPlList.appendChild(e);
+      const empty = document.createElement('div');
+      empty.className = 'pl-empty';
+      empty.innerHTML = '<b>还没有歌单</b>点「导入歌单」，粘贴分享链接或歌曲列表。';
+      elPlList.appendChild(empty);
       return;
     }
-    items.forEach((pl) => elPlList.appendChild(buildPlaylistCard(pl)));
-    paintPlaylistPlaying();
+    items.forEach((playlist) => {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'pl-directory-row';
+      row.dataset.pid = playlist.id;
+
+      const cover = document.createElement('span');
+      cover.className = 'pl-directory-cover';
+      cover.setAttribute('aria-hidden', 'true');
+      cover.innerHTML = '<svg viewBox="0 0 24 24"><path d="M4 7h11M4 12h11M4 17h7"/><circle cx="18.5" cy="16.5" r="2.5"/><path d="M21 16.5V8l-3 .8"/></svg>';
+      const artwork = playlist.cover || playlist.tracks?.find((track) => track.cover)?.cover;
+      if (artwork) {
+        const image = document.createElement('img');
+        image.alt = '';
+        image.loading = 'lazy';
+        image.addEventListener('error', () => image.remove(), { once: true });
+        image.src = coverURL(artwork);
+        cover.appendChild(image);
+      }
+
+      const text = document.createElement('span');
+      text.className = 'pl-directory-text';
+      const name = document.createElement('strong');
+      name.textContent = playlist.name || '未命名歌单';
+      const meta = document.createElement('span');
+      meta.textContent = playlistMeta(playlist);
+      text.append(name, meta);
+      const arrow = document.createElement('span');
+      arrow.className = 'pl-directory-arrow';
+      arrow.setAttribute('aria-hidden', 'true');
+      arrow.innerHTML = '<svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>';
+      row.append(cover, text, arrow);
+      row.addEventListener('click', () => {
+        playlistScroll = plDirectory.closest('.main').scrollTop;
+        showPlaylist(playlist, true);
+      });
+      elPlList.appendChild(row);
+    });
   }
 
-  function buildPlaylistCard(pl) {
-    const card = document.createElement('div');
-    card.className = 'pl-card';
-    card.dataset.pid = pl.id;
+  function playlistMeta(playlist) {
+    return playlist.count + ' 首 · ' + (PLATFORM_LABEL[playlist.platform] || '导入');
+  }
 
-    // 头部
-    const head = document.createElement('div');
-    head.className = 'pl-head';
+  function closePlaylist(restoreFocus = true) {
+    const id = openedPlaylist;
+    openedPlaylist = '';
+    plDetail.hidden = true;
+    plDetail.replaceChildren();
+    plDirectory.hidden = false;
+    const row = [...elPlList.children].find((item) => item.dataset.pid === id);
+    if (restoreFocus) (row || plImportToggle).focus({ preventScroll: true });
+    plDirectory.closest('.main').scrollTop = playlistScroll;
+  }
 
-    const arrow = document.createElement('div');
-    arrow.className = 'pl-arrow';
-    arrow.innerHTML = '<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>';
-
-    const name = document.createElement('div');
-    name.className = 'pl-name';
-    name.textContent = pl.name || '未命名歌单';
-
-    const badge = document.createElement('span');
-    badge.className = 'pl-badge';
-    badge.textContent = PLATFORM_LABEL[pl.platform] || (pl.platform || '导入');
-
-    const count = document.createElement('span');
-    count.className = 'pl-count';
-    count.textContent = pl.count + ' 首';
-
-    const actions = document.createElement('div');
-    actions.className = 'pl-actions';
-
-    const playAll = document.createElement('button');
-    playAll.className = 'icon-btn';
-    playAll.title = '播放全部';
-    playAll.innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 5l12 7-12 7z"/></svg>';
-    playAll.addEventListener('click', (e) => {
-      e.stopPropagation();
-      playPlaylistFrom(card, 0);
+  function showPlaylist(playlist, focus = false) {
+    openedPlaylist = playlist.id;
+    plDirectory.hidden = true;
+    plDetail.hidden = false;
+    plDetail.innerHTML = `
+      <button type="button" class="pl-back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg>我的歌单</button>
+      <div class="list-head pl-detail-heading"><h2></h2><span></span></div>
+      <div class="pl-detail-actions">
+        <button type="button" class="primary-btn pl-play-all">播放全部</button>
+        <button type="button" class="pl-back pl-delete">删除歌单</button>
+      </div>
+      <div class="pl-detail-tracks"></div>`;
+    plDetail.querySelector('h2').textContent = playlist.name || '未命名歌单';
+    plDetail.querySelector('.pl-detail-heading span').textContent = playlistMeta(playlist);
+    const back = plDetail.querySelector('.pl-back');
+    back.addEventListener('click', () => closePlaylist());
+    const tracks = playlist.tracks || [];
+    const playAll = plDetail.querySelector('.pl-play-all');
+    playAll.disabled = !tracks.length;
+    playAll.addEventListener('click', () => playPlaylistFrom(tracks, 0));
+    const remove = plDetail.querySelector('.pl-delete');
+    remove.addEventListener('click', async () => {
+      remove.disabled = true;
+      try {
+        const response = await fetch('/api/playlists', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: playlist.id }),
+        });
+        if (!(await response.json()).ok) throw new Error();
+        if (openedPlaylist === playlist.id) closePlaylist(false);
+        await loadPlaylists();
+        toast('已删除歌单');
+      } catch (_) {
+        toast('删除歌单失败', true);
+      } finally {
+        remove.disabled = false;
+      }
     });
 
-    const del = document.createElement('button');
-    del.className = 'icon-btn';
-    del.title = '删除这个歌单';
-    del.innerHTML = '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>';
-    del.addEventListener('click', (e) => {
-      e.stopPropagation();
-      fetch('/api/playlists', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: pl.id }),
-      }).then(() => { loadPlaylists(); toast('已删除歌单'); });
-    });
-
-    actions.appendChild(playAll);
-    actions.appendChild(del);
-
-    head.appendChild(arrow);
-    head.appendChild(name);
-    head.appendChild(badge);
-    head.appendChild(count);
-    head.appendChild(actions);
-
-    head.addEventListener('click', () => card.classList.toggle('open'));
-
-    // 歌曲列表
-    const body = document.createElement('div');
-    body.className = 'pl-body';
-    (pl.tracks || []).forEach((t, i) => {
-      const row = document.createElement('div');
+    const list = plDetail.querySelector('.pl-detail-tracks');
+    tracks.forEach((track, index) => {
+      const row = document.createElement('button');
+      row.type = 'button';
       row.className = 'pl-track';
-      row.dataset.title = t.title;
-      row.dataset.artist = t.artist || '';
-
-      const n = document.createElement('div');
-      n.className = 'n';
-      n.textContent = i + 1;
-
-      const ti = document.createElement('div');
-      ti.className = 't';
-      ti.textContent = t.title;
-
-      const ar = document.createElement('div');
-      ar.className = 'a';
-      ar.textContent = t.artist || '';
-
-      const st = document.createElement('div');
-      st.className = 'st';
-      st.textContent = '';
-
-      row.appendChild(n);
-      row.appendChild(ti);
-      row.appendChild(ar);
-      row.appendChild(st);
-
-      row.addEventListener('click', () => playPlaylistTrack(row, card));
-      body.appendChild(row);
+      row.dataset.title = track.title;
+      row.dataset.artist = track.artist || '';
+      row.innerHTML = '<span class="n"></span><span class="t"></span><span class="a"></span>';
+      row.children[0].textContent = index + 1;
+      row.children[1].textContent = track.title;
+      row.children[2].textContent = track.artist || '';
+      row.addEventListener('click', () => playPlaylistFrom(tracks, index));
+      list.appendChild(row);
     });
-
-    card.appendChild(head);
-    card.appendChild(body);
-    return card;
+    paintPlaylistPlaying();
+    if (focus) {
+      back.focus({ preventScroll: true });
+      plDetail.closest('.main').scrollTop = 0;
+    }
   }
 
   // 解析歌单里的某一首（本站搜索），成功返回歌曲对象
@@ -1155,17 +1185,8 @@
     return fetch(q).then((r) => r.json());
   }
 
-  function playPlaylistTrack(row, card) {
-    const rows = Array.from(card.querySelectorAll('.pl-track'));
-    playPlaylistFrom(card, rows.indexOf(row));
-  }
-
-  function playPlaylistFrom(card, index) {
-    const tracks = Array.from(card.querySelectorAll('.pl-track'), (row) => ({
-      title: row.dataset.title,
-      artist: row.dataset.artist,
-      source: currentSource(),
-    }));
+  function playPlaylistFrom(items, index) {
+    const tracks = items.map((track) => ({ ...track, source: currentSource() }));
     if (tracks[index]) playItem(tracks[index], tracks, true);
   }
 
@@ -1200,6 +1221,7 @@
         elImportText.value = '';
         toast('已导入「' + (res.name || '歌单') + '」' + res.count + ' 首');
         elSideTip.textContent = '导入成功';
+        togglePlaylistImport(false);
         return loadPlaylists(res.id);
       })
       .catch((e) => {
