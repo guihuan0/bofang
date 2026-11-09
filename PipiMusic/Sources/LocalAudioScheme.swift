@@ -45,22 +45,70 @@ final class LocalAudioScheme: NSObject, WKURLSchemeHandler {
             return
         }
 
-        guard let data = try? Data(contentsOf: file) else {
+        guard let size = try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+              size > 0 else {
             task.didFailWithError(PipiError.message("read failed"))
             return
         }
 
-        let mimeType = mime(file.pathExtension)
+        var start = 0
+        var end = size - 1
+        var status = 200
+        var headers = ["Content-Type": mime(file.pathExtension), "Accept-Ranges": "bytes",
+                       "Access-Control-Allow-Origin": "*"]
+        if let range = task.request.value(forHTTPHeaderField: "Range"),
+           range.hasPrefix("bytes="), !range.contains(",") {
+            let bounds = range.dropFirst(6).split(separator: "-", omittingEmptySubsequences: false)
+            var valid = false
+            if bounds.count == 2 {
+                if let first = Int(bounds[0]), first >= 0, first < size {
+                    if bounds[1].isEmpty {
+                        start = first
+                        valid = true
+                    } else if let last = Int(bounds[1]), last >= first {
+                        start = first
+                        end = min(last, end)
+                        valid = true
+                    }
+                } else if bounds[0].isEmpty, let suffix = Int(bounds[1]), suffix > 0 {
+                    start = size - min(size, suffix)
+                    valid = true
+                }
+            }
+            if !valid {
+                if let response = HTTPURLResponse(url: url, statusCode: 416, httpVersion: "HTTP/1.1",
+                                                  headerFields: ["Content-Range": "bytes */\(size)"]) {
+                    task.didReceive(response)
+                    task.didFinish()
+                } else {
+                    task.didFailWithError(PipiError.message("invalid audio range"))
+                }
+                return
+            }
+            status = 206
+            headers["Content-Range"] = "bytes \(start)-\(end)/\(size)"
+        }
+        let length = end - start + 1
+        headers["Content-Length"] = String(length)
+        let data: Data
+        do {
+            let handle = try FileHandle(forReadingFrom: file)
+            defer { try? handle.close() }
+            try handle.seek(toOffset: UInt64(start))
+            guard let chunk = try handle.read(upToCount: length), chunk.count == length else {
+                throw PipiError.message("incomplete audio file")
+            }
+            data = chunk
+        } catch {
+            task.didFailWithError(error)
+            return
+        }
+
         let resp = HTTPURLResponse(
             url: url,
-            statusCode: 200,
+            statusCode: status,
             httpVersion: "HTTP/1.1",
-            headerFields: [
-                "Content-Type": mimeType,
-                "Content-Length": "\(data.count)",
-                "Accept-Ranges": "bytes",
-                "Access-Control-Allow-Origin": "*",
-            ]
+            headerFields: headers
         )
         guard let resp = resp else {
             task.didFailWithError(PipiError.message("no response"))

@@ -333,7 +333,12 @@
     row.appendChild(meta);
     row.appendChild(act);
 
-    row.addEventListener('click', () => playLocal(f));
+    row.addEventListener('click', () => {
+      state.queue = dlFiles.map(downloadTrack);
+      state.index = state.queue.findIndex((track) => track.local === f.name);
+      resetShuffle();
+      playQueued(state.index);
+    });
     return row;
   }
 
@@ -345,11 +350,8 @@
     });
   }
 
-  function playLocal(f) {
-    state.queue = [];
-    state.index = -1;
-    shuffledOrder = [];
-    state.current = {
+  function downloadTrack(f) {
+    return {
       id: 'local:' + f.name,
       title: f.title || f.name,
       artist: f.artist || '本地文件',
@@ -358,6 +360,11 @@
       source: 'local',
       local: f.name,
     };
+  }
+
+  function playLocal(track) {
+    state.current = track;
+    loadedTrack = track;
 
     elNowTitle.textContent = state.current.title;
     elNowArtist.textContent = state.current.artist;
@@ -369,9 +376,9 @@
     showLyricsMessage('正在找歌词…');
 
     if (window.__PIPI_IOS__) {
-      audio.src = 'pipilocal://local/' + encodeURIComponent(f.name);
+      audio.src = 'pipilocal://local/' + encodeURIComponent(track.local);
     } else {
-      audio.src = '/local/' + encodeURIComponent(f.name);
+      audio.src = '/local/' + encodeURIComponent(track.local);
     }
     audio.play().catch(() => {});
     document.body.classList.add('playing');
@@ -380,7 +387,7 @@
 
     paintPlaying();
     renderQueue();
-    loadLocalLyric(f);
+    loadLocalLyric({ name: track.local, title: track.title, artist: track.artist });
   }
 
   function loadLocalLyric(f) {
@@ -1101,6 +1108,11 @@
       }
       resetShuffle();
     }
+    const localName = item.local || (item.id && item.id.startsWith('local:') ? item.id.slice(6) : '');
+    if (localName) {
+      playLocal({ ...item, local: localName, source: 'local' });
+      return;
+    }
     state.current = {
       id: item.id,
       title: item.title || item.raw || '未知歌曲',
@@ -1261,6 +1273,7 @@
   }
 
   function playQueued(index) {
+    if (!state.queue[index]) return;
     state.index = index;
     playItem(state.queue[index]);
   }
@@ -1485,6 +1498,7 @@
   });
 
   audio.addEventListener('ended', () => {
+    if (state.current !== loadedTrack) return;
     updateSystemPlayback(false);
     document.body.classList.remove('playing', 'spinning');
     elMiniEq.classList.remove('on');
