@@ -396,7 +396,8 @@ final class Bridge: NSObject, WKScriptMessageHandler {
 
     private var dlJobs: [String: [String: Any]] = [:]
     private static let playlistHosts: Set<String> = ["y.qq.com", "c.y.qq.com", "www.kugou.com",
-                                                     "music.douyin.com", "qishui.douyin.com"]
+                                                     "music.douyin.com", "qishui.douyin.com",
+                                                     "nplserver.kuwo.cn"]
 
     private func prepareDownload(sid: String, title: String, artist: String,
                                  source: String, workers: Int, cover: String) throws -> [String: Any] {

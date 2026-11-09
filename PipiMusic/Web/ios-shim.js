@@ -234,8 +234,49 @@
     return null;
   }
 
+  async function importKuwo(id) {
+    const tracks = [];
+    let name = '';
+    const pageSize = 1000;
+    const clean = (text) => String(text || '').replace(/<[^>]+>/g, '').trim();
+    for (let pn = 0; ; pn++) {
+      const url = new URL('https://nplserver.kuwo.cn/pl.svc');
+      url.search = new URLSearchParams({
+        op: 'getlistinfo', pid: id, pn, rn: pageSize, encode: 'utf8',
+        keyset: 'pl2012', identity: 'kuwo', pcmp4: 1, vipver: 'MUSIC_9.1.0', newver: 1,
+      }).toString();
+      const response = await call('playlistPage', url.href);
+      let data;
+      try { data = JSON.parse(response.html); } catch (_) {
+        throw new Error('酷我接口返回了无效的歌单数据');
+      }
+      if (!data || (data.result != null && data.result !== 'ok')) {
+        throw new Error('酷我歌单不存在或无法访问');
+      }
+      name = name || clean(data.title);
+      const page = data.musiclist || [];
+      if (!Array.isArray(page)) throw new Error('酷我接口返回了无效的歌曲列表');
+      for (const item of page) {
+        tracks.push({
+          title: clean(item?.name || item?.SONGNAME),
+          artist: clean(item?.artist || item?.FARTIST).replace(/\s*&\s*/g, ' / '),
+        });
+      }
+      if (page.length < pageSize || (Number(data.total) > 0 && tracks.length >= Number(data.total))) break;
+    }
+    return saveImportedPlaylist(name || ('酷我歌单 ' + id), 'kuwo', tracks);
+  }
+
   async function importLink(link) {
     let url = new URL(link);
+    if (url.hostname === 'kuwo.cn' || url.hostname.endsWith('.kuwo.cn')) {
+      const pathId = url.pathname.match(/^\/(?:newh5app\/)?playlist_detail\/(\d+)(?:\/|$)/)?.[1];
+      const pid = url.searchParams.get('pid');
+      const queryId = url.searchParams.get('id');
+      const id = pathId || (/^\d+$/.test(pid || '') && pid) || (/^\d{6,}$/.test(queryId || '') && queryId);
+      if (!id) throw new Error('链接里找不到酷我歌单 ID');
+      return importKuwo(id);
+    }
     if (url.hostname === 'y.qq.com') {
       const id = url.pathname.match(/\/playlist\/(\d+)/)?.[1] || url.searchParams.get('disstid');
       if (id && /^\d+$/.test(id)) url = new URL('https://y.qq.com/n/ryqq/playlist/' + id);
@@ -355,7 +396,8 @@
       var text = (body.text || '').trim();
       if (!text) return Promise.resolve({ ok: false, error: '先贴点东西进来' });
       const link = text.match(/https?:\/\/[^\s，。；、<>]+/i)?.[0];
-      if (link) return importLink(link).catch(error => ({ok: false, error: error.message || '歌单导入失败'}));
+      const task = link ? importLink(link) : (/^[0-9]{8,}$/.test(text) ? importKuwo(text) : null);
+      if (task) return task.catch(error => ({ok: false, error: error.message || '歌单导入失败'}));
       return Promise.resolve(importText(text));
     }
 

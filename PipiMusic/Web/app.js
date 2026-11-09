@@ -1039,7 +1039,7 @@
       const e = document.createElement('div');
       e.className = 'pl-empty';
       e.innerHTML = '<b>还没有导入歌单</b>' +
-        '把 QQ音乐 / 酷狗 / 汽水 的歌单链接粘到下方，或者直接贴歌曲列表';
+        '把 QQ音乐 / 酷狗 / 汽水 / 酷我 的歌单链接粘到下方，或者直接贴歌曲列表';
       elPlList.appendChild(e);
       return;
     }
