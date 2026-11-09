@@ -1004,3 +1004,62 @@ body.ios.player-expanded .bar-knob { background: var(--text); box-shadow: none; 
   body.ios.player-expanded .playbar .right { grid-column: 2; grid-row: 2; align-self: end; }
   body.ios.player-expanded .playbar .center { grid-column: 2; grid-row: 3; }
 }
+
+/* Follow the operating system, including while the player is open. */
+body.ios .toast {
+  background: var(--panel);
+  color: var(--text);
+  border-color: var(--line-2);
+}
+body.ios .toast.err { color: var(--pink); }
+
+@media (prefers-color-scheme: light) {
+  body.ios {
+    --bg: #fcf7f0;
+    --bg-2: #f7efe5;
+    --panel: #f2e8db;
+    --panel-2: #eee0d1;
+    --hover: #ead9c8;
+    --line: #e1d3c4;
+    --line-2: #cbb29d;
+    --text: #2b211b;
+    --dim: #635246;
+    --dim-2: #695649;
+    --acc: #9c451e;
+    --acc-2: #9c451e;
+    --acc-3: #a54d25;
+    --on-accent: #fffaf5;
+    --pink: #a52e46;
+    --ok: #236748;
+    color-scheme: light;
+  }
+  body.ios .search-feature { background: var(--panel-2); }
+  body.ios .search-record { box-shadow: 0 8px 18px #59341b40; }
+  body.ios .tip-chip,
+  body.ios .pl-track .st { color: var(--dim); background: var(--panel); border-color: var(--line); }
+  body.ios .import-err,
+  body.ios .pl-track .st.fail { color: var(--pink); }
+}
+
+@media (prefers-color-scheme: dark) {
+  body.ios.player-expanded .playbar {
+    --text: #f1f5fb;
+    --dim: #becbd8;
+    --dim-2: #aabaca;
+    --panel: #222a34;
+    --panel-2: #283643;
+    --hover: #314456;
+    --line-2: #64788b;
+    --acc: #afd6ee;
+    --pink: #ffabbd;
+    color-scheme: dark;
+    background:
+      radial-gradient(ellipse at 87% 110%, #293650 0, transparent 60%),
+      linear-gradient(180deg, #15191e 35%, #17202a 70%, #1c3445 100%);
+  }
+  body.ios.player-expanded .turntable {
+    border-color: #63717a;
+    background: linear-gradient(145deg, #9faab1, #74828c 66%, #566570);
+    box-shadow: 0 16px 24px #080c125c;
+  }
+}

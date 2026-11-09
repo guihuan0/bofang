@@ -1630,7 +1630,6 @@
 
   function setPlayerExpanded(expanded) {
     document.body.classList.toggle('player-expanded', expanded);
-    if (window.__pipiCall) window.__pipiCall('playerAppearance', expanded).catch(() => {});
     openPlayer.setAttribute('aria-expanded', String(expanded));
     openPlayer.disabled = expanded;
     if (!expanded) {

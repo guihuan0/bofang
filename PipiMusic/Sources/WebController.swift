@@ -6,19 +6,28 @@ final class WebController: UIViewController, WKNavigationDelegate, WKUIDelegate 
     private var webView: WKWebView!
     private let bridge = Bridge()
 
-    private var lightPlayer = false
-    override var preferredStatusBarStyle: UIStatusBarStyle { lightPlayer ? .darkContent : .lightContent }
+    override var preferredStatusBarStyle: UIStatusBarStyle {
+        traitCollection.userInterfaceStyle == .dark ? .lightContent : .darkContent
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        if previousTraitCollection?.userInterfaceStyle != traitCollection.userInterfaceStyle {
+            setNeedsStatusBarAppearanceUpdate()
+        }
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
         NotificationCenter.default.addObserver(self, selector: #selector(publishNowPlaying),
                                                name: UIApplication.didEnterBackgroundNotification,
                                                object: nil)
-        bridge.onPlayerAppearance = { [weak self] expanded in
-            self?.lightPlayer = expanded
-            self?.setNeedsStatusBarAppearanceUpdate()
+        view.backgroundColor = UIColor { traits in
+            if traits.userInterfaceStyle == .dark {
+                return UIColor(red: 0.082, green: 0.071, blue: 0.063, alpha: 1)
+            }
+            return UIColor(red: 0.99, green: 0.97, blue: 0.94, alpha: 1)
         }
-        view.backgroundColor = UIColor(red: 0.082, green: 0.071, blue: 0.063, alpha: 1)
 
         let config = WKWebViewConfiguration()
         config.allowsInlineMediaPlayback = true

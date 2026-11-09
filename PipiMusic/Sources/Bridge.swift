@@ -8,7 +8,6 @@ final class Bridge: NSObject, WKScriptMessageHandler {
 
     static let name = "pipi"
     weak var webView: WKWebView?
-    var onPlayerAppearance: ((Bool) -> Void)?
 
     private let queue = DispatchQueue(label: "pipi.bridge", qos: .userInitiated)
     private let mediaQueue = DispatchQueue(label: "pipi.media", qos: .userInitiated, attributes: .concurrent)
@@ -113,11 +112,6 @@ final class Bridge: NSObject, WKScriptMessageHandler {
     private func dispatch(reqId: Int, cmd: String, args: [Any]) {
         do {
             switch cmd {
-            case "playerAppearance":
-                let expanded = (args.first as? Bool) ?? false
-                DispatchQueue.main.async { [weak self] in self?.onPlayerAppearance?(expanded) }
-                reply(reqId, ok: true, ["ok": true])
-
             case "sources":
                 let ordered = SoundSource.all.filter { $0.id == "33ve" } + SoundSource.all.filter { $0.id != "33ve" }
                 let list = ordered.map { ["id": $0.id, "label": $0.label] }
