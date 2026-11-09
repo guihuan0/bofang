@@ -519,6 +519,7 @@
     elDlBtn.hidden = true;
     resetPlaybackProgress();
     setPlaybackFormat(track.local);
+    setPlaybackSource("local");
 
     elNowTitle.textContent = state.current.title;
     elNowArtist.textContent = state.current.artist;
@@ -1014,13 +1015,20 @@
     qq: 'QQ音乐', kugou: '酷狗', qishui: '汽水', kuwo: '酷我', text: '文本',
   };
 
-  function loadPlaylists() {
-    api('/api/playlists')
+  function loadPlaylists(openId) {
+    return api('/api/playlists')
       .then((res) => {
         const items = res.items || [];
         elPlCount.textContent = items.length;
         elPlMeta.textContent = items.length ? items.length + ' 个歌单' : '';
         renderPlaylists(items);
+        if (openId) {
+          const card = [...elPlList.children].find((item) => item.dataset.pid === openId);
+          if (card) {
+            card.classList.add('open');
+            card.scrollIntoView({ block: 'nearest' });
+          }
+        }
       })
       .catch(() => {});
   }
@@ -1031,7 +1039,7 @@
       const e = document.createElement('div');
       e.className = 'pl-empty';
       e.innerHTML = '<b>还没有导入歌单</b>' +
-        '把 QQ音乐 / 酷狗 / 汽水 的歌单链接粘到上面，或者直接贴歌曲列表';
+        '把 QQ音乐 / 酷狗 / 汽水 的歌单链接粘到下方，或者直接贴歌曲列表';
       elPlList.appendChild(e);
       return;
     }
@@ -1140,10 +1148,10 @@
   }
 
   // 解析歌单里的某一首（本站搜索），成功返回歌曲对象
-  function resolveTrack(title, artist) {
+  function resolveTrack(title, artist, source) {
     const q = '/api/resolve?title=' + encodeURIComponent(title) +
               '&artist=' + encodeURIComponent(artist || '') +
-              '&source=' + encodeURIComponent(currentSource());
+              '&source=' + encodeURIComponent(source || currentSource());
     return fetch(q).then((r) => r.json());
   }
 
@@ -1192,12 +1200,7 @@
         elImportText.value = '';
         toast('已导入「' + (res.name || '歌单') + '」' + res.count + ' 首');
         elSideTip.textContent = '导入成功';
-        loadPlaylists();
-        // 自动展开新导入的那个
-        setTimeout(() => {
-          const c = elPlList.querySelector('.pl-card[data-pid="' + res.id + '"]');
-          if (c) c.classList.add('open');
-        }, 300);
+        return loadPlaylists(res.id);
       })
       .catch((e) => {
         elImportErr.textContent = '请求失败：' + e.message;
@@ -1205,7 +1208,7 @@
       })
       .then(() => {
         elImportBtn.disabled = false;
-        elImportBtn.textContent = '导入';
+        elImportBtn.textContent = '导入歌单';
       });
   }
 
@@ -1220,7 +1223,7 @@
   // ---------------------------------------------------------- 播放
   async function resolvePlaybackItem(item) {
     if (!item.id && item.title) {
-      const resolved = await resolveTrack(item.title, item.artist);
+      const resolved = await resolveTrack(item.title, item.artist, item.source);
       if (!resolved.ok || !resolved.song) return { ok: false, error: '音源没有找到这首歌' };
       item = resolved.song;
     }
@@ -1295,7 +1298,11 @@
           elNowCover.src = coverURL(res.cover);
           elNowCover.style.display = '';
         }
-        state.current.lkid = res.lkid || state.current.lkid;
+        // The playlist row carries names; playback returns the playable source identity.
+        track.id = res.id || track.id;
+        track.source = res.source || track.source;
+        track.lkid = res.lkid || track.lkid;
+        setPlaybackSource(track.source);
 
         // 回写队列里的封面（让列表也显示图）
         patchCover(track.id, track.source, res.cover);
@@ -1617,8 +1624,15 @@
     elNowFormat.hidden = !label;
   }
 
+  function setPlaybackSource(source) {
+    const badge = $('#nowSource');
+    badge.textContent = ({ '33ve': '闪闪音乐', vipp3: '皮皮音乐', aac: 'AAC音乐', local: '本地' })[source] || '';
+    badge.hidden = !badge.textContent;
+  }
+
   function resetPlaybackProgress() {
     setPlaybackFormat('');
+    setPlaybackSource('');
     $('#playbar').style.setProperty('--play-progress', '0%');
     elSeekFill.style.width = '0%';
     elSeekKnob.style.left = '0%';
@@ -1743,6 +1757,9 @@
       .then((res) => {
         if (state.current !== track) return;
         if (!res.ok) throw new Error(res.error || '重取失败');
+        track.id = res.id || track.id;
+        track.source = res.source || track.source;
+        setPlaybackSource(track.source);
         setPlaybackFormat(res.stream);
         audio.src = res.stream;
         const resume = () => {

@@ -315,6 +315,7 @@
         }
         return {
           ok: true,
+          id: r.id || body.id,
           stream: r.url,          // app.js 用 stream 这个字段名
           url: r.url,
           cover: r.cover || '',

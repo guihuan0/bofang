@@ -132,6 +132,7 @@ final class Bridge: NSObject, WKScriptMessageHandler {
                                                 artist: argStr(args, 3), source: source, workers: 3)
                 var payload = audio.result.dict
                 payload["source"] = audio.source
+                payload["id"] = audio.id
                 reply(reqId, ok: true, payload)
 
             case "cover":
@@ -315,9 +316,9 @@ final class Bridge: NSObject, WKScriptMessageHandler {
     }
 
     private func resolveAudio(sid: String, title: String, artist: String,
-                              source: String, candidate: String) throws -> PlayResult {
+                              source: String, candidate: String) throws -> (result: PlayResult, id: String) {
         let id = try matchingSongID(sid: sid, title: title, artist: artist, source: source, candidate: candidate)
-        return try ClientPool.shared.client(candidate).playURL(id: id)
+        return (try ClientPool.shared.client(candidate).playURL(id: id), id)
     }
 
     private func matchingSongID(sid: String, title: String, artist: String,
@@ -325,27 +326,27 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         if candidate == source, !sid.isEmpty { return sid }
         let titleKey = title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let artistKey = artist.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !titleKey.isEmpty, !artistKey.isEmpty else {
-            throw PipiError.message("缺少歌名或歌手，无法匹配音源")
+        guard !titleKey.isEmpty else {
+            throw PipiError.message("缺少歌名，无法匹配音源")
         }
         let songs = try ClientPool.shared.client(candidate).search("\(title) \(artist)", limit: 8)
         guard let match = songs.first(where: {
             $0.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == titleKey &&
-            $0.artist.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == artistKey
+            (artistKey.isEmpty || $0.artist.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == artistKey)
         }) else { throw PipiError.message("该音源没有找到同一首歌") }
         return match.id
     }
 
     private func resolvePlayback(sid: String, title: String, artist: String, source: String,
-                                 workers: Int) throws -> (result: PlayResult, source: String) {
+                                 workers: Int) throws -> (result: PlayResult, source: String, id: String) {
         let source = SoundSource.find(source)?.id ?? "vipp3"
         let candidates = ["33ve"] + (source == "33ve" ? [] : [source])
             + SoundSource.all.map(\.id).filter { $0 != "33ve" && $0 != source }
         if workers == 1 {
             for candidate in candidates {
                 if let result = try? resolveAudio(sid: sid, title: title, artist: artist,
-                                                  source: source, candidate: candidate), result.ok {
-                    return (result, candidate)
+                                                  source: source, candidate: candidate), result.result.ok {
+                    return (result.result, candidate, result.id)
                 }
             }
             throw PipiError.message("没有找到可播放的音源")
@@ -357,8 +358,8 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         let condition = NSCondition()
         var remaining = candidates.count
         var preferredPending = true
-        var preferred: PlayResult?
-        var fallback: (result: PlayResult, source: String)?
+        var preferred: (result: PlayResult, id: String)?
+        var fallback: (result: PlayResult, source: String, id: String)?
         var graceDeadline: Date?
         let timeout = Date().addingTimeInterval(70)
         let operations = candidates.map { candidate -> BlockOperation in
@@ -368,9 +369,9 @@ final class Bridge: NSObject, WKScriptMessageHandler {
                 condition.lock()
                 if candidate == "33ve" {
                     preferredPending = false
-                    if let result = result, result.ok { preferred = result }
-                } else if let result = result, result.ok, fallback == nil {
-                    fallback = (result, candidate)
+                    if let result = result, result.result.ok { preferred = result }
+                } else if let result = result, result.result.ok, fallback == nil {
+                    fallback = (result.result, candidate, result.id)
                     graceDeadline = Date().addingTimeInterval(0.35)
                 }
                 remaining -= 1
@@ -388,7 +389,7 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             let deadline = min(timeout, graceDeadline ?? timeout)
             if !condition.wait(until: deadline) { break }
         }
-        if let preferred = preferred { return (preferred, "33ve") }
+        if let preferred = preferred { return (preferred.result, "33ve", preferred.id) }
         if let fallback = fallback { return fallback }
         throw PipiError.message("没有找到可播放的音源")
     }
@@ -415,7 +416,7 @@ final class Bridge: NSObject, WKScriptMessageHandler {
         let audio: PlayResult
         do {
             audio = try resolveAudio(sid: sid, title: title, artist: artist,
-                                     source: source, candidate: "33ve")
+                                     source: source, candidate: "33ve").result
         } catch {
             throw PipiError.message("33ve 下载失败：\(error.localizedDescription)")
         }
