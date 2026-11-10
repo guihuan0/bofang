@@ -2082,7 +2082,7 @@
   let swipeStart = null;
   immersive.addEventListener('touchstart', (event) => {
     if (!document.body.classList.contains('player-expanded') || event.touches.length !== 1 ||
-        event.target.closest('button:not(#openPlayer), #seekBar, #playerLyrics, #playerQueue')) {
+        event.target.closest('button:not(#openPlayer), #seekBar, #volBar, #playerLyrics, #playerQueue')) {
       swipeStart = null;
       return;
     }
