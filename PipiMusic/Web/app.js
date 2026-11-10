@@ -563,7 +563,7 @@
     elSideTip.textContent = '本地播放';
     syncFavBtn();
 
-    showLyricsMessage('正在找歌词…');
+    showLyricsMessage('正在读取歌词…');
 
     if (window.__PIPI_IOS__) {
       audio.src = 'pipilocal://local/' + encodeURIComponent(track.local);

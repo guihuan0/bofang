@@ -1,3 +1,4 @@
+import CoreFoundation
 import UIKit
 import WebKit
 
@@ -150,6 +151,11 @@ final class Bridge: NSObject, WKScriptMessageHandler {
                 let title = argStr(args, 0)
                 let artist = argStr(args, 1)
                 let source = argStr(args, 2)
+                let local = argStr(args, 3)
+                if let file = localFileURL(name: local), let lines = localLyrics(for: file) {
+                    reply(reqId, ok: true, ["found": true, "lines": lines.map { ["t": $0.t, "text": $0.text] }])
+                    return
+                }
                 let result = try lyricSearch(title: title, artist: artist, source: source)
                 if let cover = result["cover"] as? String, let file = localFileURL(name: argStr(args, 3)) {
                     saveDownloadCover(cover, audio: file)
@@ -220,6 +226,29 @@ final class Bridge: NSObject, WKScriptMessageHandler {
     }
 
     // MARK: - 歌词借用
+
+    private func localLyrics(for audio: URL) -> [LyricLine]? {
+        let gb18030 = String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(
+            CFStringEncoding(CFStringEncodings.GB_18030_2000.rawValue)))
+        for base in [audio, audio.deletingPathExtension()] {
+            for ext in ["lrc", "LRC"] {
+                let url = base.appendingPathExtension(ext)
+                guard let file = try? FileHandle(forReadingFrom: url) else { continue }
+                defer { try? file.close() }
+                guard let data = try? file.read(upToCount: 1024 * 1024 + 1),
+                      data.count <= 1024 * 1024 else { continue }
+                let encodings: [String.Encoding] = data.starts(with: [0xFF, 0xFE]) || data.starts(with: [0xFE, 0xFF])
+                    ? [.utf16] : [.utf8, gb18030]
+                for encoding in encodings {
+                    guard let raw = String(data: data, encoding: encoding) else { continue }
+                    let text = raw.hasPrefix("\u{FEFF}") ? String(raw.dropFirst()) : raw
+                    let lines = LRCParser.parse(text)
+                    if !lines.isEmpty { return lines }
+                }
+            }
+        }
+        return nil
+    }
 
     private func lyricSearch(title: String, artist: String, source: String) throws -> [String: Any] {
         let client = ClientPool.shared.client(source)
