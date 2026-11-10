@@ -33,7 +33,6 @@
   const elTCur      = $('#tCur');
   const elTDur      = $('#tDur');
   const elVolBar    = $('#volBar');
-  const elVolFill   = $('#volFill');
   const elMute      = $('#btnMute');
   const elToast     = $('#toast');
   const elLyricList = $('#lyricList');
@@ -1290,7 +1289,7 @@
     if (queue !== undefined) {
       const tracks = !useExactQueue && state.favs.length ? state.favs : queue;
       state.queue = tracks.slice();
-      state.index = state.queue.findIndex((song) => favKey(song) === favKey(item));
+      state.index = useExactQueue ? state.queue.indexOf(item) : state.queue.findIndex((song) => favKey(song) === favKey(item));
       if (state.index === -1) {
         state.queue.unshift(item);
         state.index = 0;
@@ -1304,6 +1303,7 @@
     }
     state.current = {
       id: item.id,
+      kuwoRid: item.kuwoRid,
       title: item.title || item.raw || '未知歌曲',
       artist: item.artist || '未知歌手',
       cover: item.cover || '',
@@ -2147,27 +2147,19 @@
   function setVol(v) {
     v = Math.max(0, Math.min(1, v));
     audio.volume = v;
-    elVolFill.style.width = (v * 100) + '%';
+    elVolBar.value = String(Math.round(v * 100));
+    if (v > 0) lastVol = v;
+    const muteLabel = v === 0 ? '取消静音' : '静音';
+    elMute.title = muteLabel;
+    elMute.setAttribute('aria-label', muteLabel);
     elMute.classList.toggle('muted', v === 0);
   }
 
-  audio.volume = 0.7;
-
-  elVolBar.addEventListener('mousedown', (e) => {
-    const set = (ev) => setVol(ratioFromEvt(elVolBar, ev));
-    set(e);
-    const mv = (ev) => set(ev);
-    const up = () => {
-      window.removeEventListener('mousemove', mv);
-      window.removeEventListener('mouseup', up);
-    };
-    window.addEventListener('mousemove', mv);
-    window.addEventListener('mouseup', up);
-  });
+  setVol(0.7);
+  elVolBar.addEventListener('input', () => setVol(Number(elVolBar.value) / 100));
 
   elMute.addEventListener('click', () => {
     if (audio.volume > 0) {
-      lastVol = audio.volume;
       setVol(0);
     } else {
       setVol(lastVol || 0.7);

@@ -202,10 +202,14 @@
 
   function saveImportedPlaylist(name, platform, tracks) {
     const unique = new Map();
-    tracks.forEach(({title, artist}) => {
+    tracks.forEach(({title, artist, kuwoRid}) => {
       title = String(title || '').trim();
       artist = String(artist || '').trim();
-      if (title) unique.set(JSON.stringify([title, artist]), {title, artist});
+      if (!title) return;
+      const track = {title, artist};
+      if (platform === "kuwo" && /^[0-9]+$/.test(kuwoRid || "")) track.kuwoRid = String(kuwoRid);
+      const key = track.kuwoRid ? ["kuwo", track.kuwoRid] : [title, artist];
+      unique.set(JSON.stringify(key), track);
     });
     tracks = Array.from(unique.values());
     if (!tracks.length) return {ok: false, error: '没有找到歌曲。请确认歌单公开，或粘贴每行一首的文本。'};
@@ -259,6 +263,7 @@
       for (const item of page) {
         tracks.push({
           title: clean(item?.name || item?.SONGNAME),
+          kuwoRid: String(item?.id || ""),
           artist: clean(item?.artist || item?.FARTIST).replace(/\s*&\s*/g, ' / '),
         });
       }

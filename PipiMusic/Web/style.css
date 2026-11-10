@@ -914,23 +914,12 @@ body.playing .ctl .i-pause { display: block; }
 .mini.muted { color: #f87171; }
 
 .vbar {
-  position: relative;
-  width: 84px;
-  height: 16px;
-  display: flex;
-  align-items: center;
+  width: 72px;
+  height: 32px;
+  margin: 0;
+  accent-color: var(--acc);
   cursor: pointer;
 }
-.vbar .bar-bg {
-  height: 3px;
-  background: rgba(255, 255, 255, .1);
-}
-.vbar .bar-fill {
-  height: 3px;
-  background: var(--text);
-  opacity: .85;
-}
-.vbar:hover .bar-fill { background: var(--acc); }
 
 /* ============================================================
    歌单导入

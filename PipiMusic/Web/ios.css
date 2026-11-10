@@ -567,7 +567,16 @@ body.ios.player-expanded #btnLoop { width: auto; min-width: 64px; padding: 0 6px
 body.ios.player-expanded #btnPrev { order: -1; }
 body.ios.player-expanded .right { justify-content: center; }
 body.ios.player-expanded .right .mini { width: 44px; height: 44px; }
-body.ios.player-expanded .right .vbar { display: none; }
+body.ios.player-expanded .right .vbar {
+  display: block;
+  width: clamp(80px, 28vw, 144px);
+  height: 44px;
+  margin: 0;
+  accent-color: currentColor;
+  color: inherit;
+  cursor: pointer;
+  touch-action: none;
+}
 /* iOS visual system */
 .screen-title { display: none; }
 
