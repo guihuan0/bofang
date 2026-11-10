@@ -229,6 +229,9 @@
       toast('不知道要下载哪首', true);
       return;
     }
+    const current = state.current;
+    const upgradeTrack = item === current || (current && item.id && item.id === current.id &&
+      (item.source || currentSource()) === current.source) ? current : null;
     const key = (item.id || '') + '|' + item.title;
     if (dlActive[key]) {
       toast('这首正在下载中');
@@ -253,7 +256,7 @@
           return;
         }
         toast(res.lossless ? '正在下载无损 FLAC' : '正在从 33ve 下载');
-        pollDownload(res.task, key);
+        pollDownload(res.task, key, upgradeTrack);
       })
       .catch((e) => {
         delete dlActive[key];
@@ -261,12 +264,15 @@
       });
   }
 
-  function pollDownload(tid, key) {
+  function pollDownload(tid, key, upgradeTrack) {
+    let finished = false;
     let lastPct = -1;
     const timer = setInterval(() => {
       api('/api/download/status?task=' + encodeURIComponent(tid))
         .then((res) => {
+          if (finished) return;
           if (!res.ok) {
+            finished = true;
             clearInterval(timer);
             if (key) delete dlActive[key];
             return;
@@ -281,11 +287,12 @@
             }
             return;
           }
+          finished = true;
           clearInterval(timer);
           if (key) delete dlActive[key];
           if (j.status === 'done') {
             elSideTip.textContent = '已下载';
-            toast('已保存：' + j.name);
+            if (!upgradeDownloadedPlayback(upgradeTrack, j.name)) toast('已保存：' + j.name);
             loadDownloads();
           } else if (j.status === 'cancelled') {
             toast('已取消');
@@ -295,10 +302,33 @@
           }
         })
         .catch(() => {
+          finished = true;
           clearInterval(timer);
           if (key) delete dlActive[key];
         });
     }, 350);
+  }
+
+  function upgradeDownloadedPlayback(track, name) {
+    if (!track || track !== state.current || track !== loadedTrack ||
+        track.local || !/\.flac$/i.test(name || '')) return false;
+    const position = audio.currentTime;
+    const resume = !audio.paused;
+    const source = (window.__pipiNativePlayback ? 'pipilocal://local/' : '/local/') + encodeURIComponent(name);
+    track.local = name;
+    elDlBtn.hidden = true;
+    audio.addEventListener('loadedmetadata', () => {
+      if (state.current !== track || track.local !== name) return;
+      if (Number.isFinite(position) && position > 0) {
+        audio.currentTime = Number.isFinite(audio.duration) ? Math.min(position, audio.duration) : position;
+      }
+      setPlaybackFormat(name);
+      setPlaybackSource('local');
+      if (resume) audio.play().catch(() => {});
+      toast('已切换到本地无损 FLAC');
+    }, { once: true });
+    audio.src = source;
+    return true;
   }
 
   // 播放条上的下载按钮
